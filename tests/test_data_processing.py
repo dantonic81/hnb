@@ -8,7 +8,7 @@ class TestDataProcessing:
 
     @pytest.fixture
     def sample_data(self):
-        # Return sample data for testing
+        # Return sample raw_data for testing
         pass
 
     def test_clean_data(self, sample_data):
