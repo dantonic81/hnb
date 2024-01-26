@@ -74,7 +74,7 @@ def transform_and_validate_products(products_data):
     return products_data
 
 
-def transform_and_validate_transactions(transactions_data, customers_data, products_data):
+def transform_and_validate_transactions(transactions_data):
     # Transform and validate transactions raw_data
     # Ensure unique transaction_id, valid customer_id, valid product skus, and total_cost matches total
     unique_transaction_ids = set()
@@ -149,7 +149,7 @@ def process_hourly_data(date, hour, available_datasets):
     load_data(transformed_transactions, "transactions")
 
 
-def process_all_data(logger):
+def process_all_data():
     # Process all available raw_data
     for date_folder in os.listdir(RAW_DATA_PATH):
         date_path = os.path.join(RAW_DATA_PATH, date_folder)
@@ -161,12 +161,12 @@ def process_all_data(logger):
             if available_datasets:
                 process_hourly_data(date_folder, hour_folder, available_datasets)
             else:
-                print(f"Warning: No datasets found for {date_folder}/{hour_folder}")
+                logger.warning(f"No datasets found for {date_folder}/{hour_folder}")
 
 
 def main():
     try:
-        process_all_data(logger)
+        process_all_data()
     except Exception as e:
         logger.error(f"An error occurred: {str(e)}")
 
