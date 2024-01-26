@@ -18,6 +18,8 @@ PROCESSED_DATA_PATH = os.path.join(SCRIPT_DIR, '..', 'processed_data')
 
 
 # Helper functions
+# TODO schema validation json
+# TODO prevent duplicate loading
 def extract_data(file_path):
     if not file_path:
         return []
