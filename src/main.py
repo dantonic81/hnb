@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RAW_DATA_PATH = os.path.join(SCRIPT_DIR, '..', 'raw_data')
 PROCESSED_DATA_PATH = os.path.join(SCRIPT_DIR, '..', 'processed_data')
+ARCHIVED_DATA_PATH = os.path.join(SCRIPT_DIR, '..', 'archived_data')
 
 
 # Helper functions
@@ -114,19 +115,39 @@ def anonymize_customer_data(customer_data, erasure_requests):
     return customer_data
 
 
-def load_data(data, dataset_type):
-    # Load processed raw_data to the new location
-    output_path = os.path.join(PROCESSED_DATA_PATH, f"{dataset_type}.json")
+def load_data(data, dataset_type, date, hour):
+    # Create the corresponding subdirectories in processed_data
+    output_dir = os.path.join(PROCESSED_DATA_PATH, date, hour)
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Load processed data to the new location
+    output_path = os.path.join(output_dir, f"{dataset_type}.json")
     with open(output_path, "a") as file:
         for record in data:
             json.dump(record, file)
             file.write("\n")
 
 
+def archive_and_delete(file_path, dataset_type, date, hour, archive_path):
+    archive_file = dataset_type
+    archive_file_path = os.path.join(archive_path, date, hour, archive_file)
+
+    # Create the archive directory if it doesn't exist
+    os.makedirs(os.path.dirname(archive_path), exist_ok=True)
+
+    # Archive the file
+    os.rename(file_path, archive_file_path)
+    logger.info(f"File archived: {archive_path}")
+
+    # Optionally, you can also delete the file
+    os.remove(file_path)
+    logger.info(f"Original file deleted: {file_path}")
+
+
 def process_hourly_data(date, hour, available_datasets):
     dataset_paths = {dataset: os.path.join(RAW_DATA_PATH, f"{date}", f"{hour}", f"{dataset}")
                      for dataset in available_datasets}
-    print("Dataset Paths:", dataset_paths)  # Debug statement
+    logger.debug("Dataset Paths:", dataset_paths)  # Debug statement
 
     # Extract raw_data
     customers_data = extract_data(dataset_paths.get("customers.json.gz", ""))
@@ -137,16 +158,21 @@ def process_hourly_data(date, hour, available_datasets):
     # Transform and validate raw_data
     transformed_customers = transform_and_validate_customers(customers_data)
     transformed_products = transform_and_validate_products(products_data)
-    transformed_transactions = transform_and_validate_transactions(transactions_data, transformed_customers,
-                                                                   transformed_products)
+    transformed_transactions = transform_and_validate_transactions(transactions_data)
 
     # Anonymize customer raw_data
     anonymized_customers = anonymize_customer_data(transformed_customers, erasure_requests_data)
 
     # Load processed raw_data
-    load_data(anonymized_customers, "customers")
-    load_data(transformed_products, "products")
-    load_data(transformed_transactions, "transactions")
+    load_data(anonymized_customers, "customers", date, hour)
+    load_data(transformed_products, "products", date, hour)
+    load_data(transformed_transactions, "transactions", date, hour)
+
+    # Archive and delete the original files
+    for dataset_type, dataset_path in dataset_paths.items():
+        print("Processing dataset:", dataset_type, "Path:", dataset_path)
+
+        archive_and_delete(dataset_path, dataset_type, date, hour, ARCHIVED_DATA_PATH)
 
 
 def process_all_data():
