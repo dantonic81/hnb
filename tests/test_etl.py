@@ -1,7 +1,7 @@
-# tests/test_data_processing.py
+# tests/test_etl.py
 
 import pytest
-from src.data_processing import clean_data, anonymize_data, validate_data
+from src.etl import clean_data, anonymize_data, validate_data
 
 
 class TestDataProcessing:
