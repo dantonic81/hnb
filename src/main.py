@@ -5,7 +5,12 @@ import json
 import gzip
 import hashlib
 from datetime import datetime
+from dotenv import load_dotenv
 
+import psycopg2
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,6 +28,60 @@ ARCHIVED_DATA_PATH = os.path.join(SCRIPT_DIR, '..', 'archived_data')
 # TODO prevent duplicate loading
 # TODO handle missing fields and duplicate skus in transformations
 # TODO add orchestration / workflows for different arrivals
+# TODO add tests
+# TODO connect everything to minio
+# TODO log records in database for erasure requests and have single source of truth
+
+
+# Connect to PostgreSQL
+def connect_to_postgres():
+    connection = psycopg2.connect(
+        user=os.environ["POSTGRES_USER"],
+        password=os.environ["POSTGRES_PASSWORD"],
+        host=os.environ["DB_HOST"],
+        database=os.environ["POSTGRES_DB"],
+    )
+    return connection
+
+
+# Create the processed_data_log table
+def create_processed_data_log_table(connection):
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS processed_data_log (
+                id SERIAL PRIMARY KEY,
+                date DATE NOT NULL,
+                hour INTEGER NOT NULL,
+                customer_id INTEGER NOT NULL,
+                processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+    connection.commit()
+
+
+# Extract the actual date from the "date=20xx-xx-xx" format
+def extract_actual_date(date_str):
+    return datetime.strptime(date_str.replace("date=", ""), "%Y-%m-%d").date()
+
+
+# Extract the actual hour from the "hour=00" format
+def extract_actual_hour(hour_str):
+    return int(hour_str.replace("hour=", ""))
+
+
+# Insert a record into processed_data_log for each processed customer
+def log_processed_customers(connection, date, hour, customer_ids):
+    actual_date = extract_actual_date(date)
+    actual_hour = extract_actual_hour(hour)
+    with connection.cursor() as cursor:
+        for customer_id in customer_ids:
+            cursor.execute("""
+                INSERT INTO processed_data_log (date, hour, customer_id) 
+                VALUES (%s, %s, %s);
+            """, (actual_date, actual_hour, customer_id))
+    connection.commit()
+
+
 def extract_data(file_path):
     if not file_path:
         return []
@@ -170,6 +229,12 @@ def process_hourly_data(date, hour, available_datasets):
     load_data(anonymized_customers, "customers", date, hour)
     load_data(transformed_products, "products", date, hour)
     load_data(transformed_transactions, "transactions", date, hour)
+
+    # Log processed customers
+    customer_ids = [customer["id"] for customer in anonymized_customers]
+    connection = connect_to_postgres()
+    create_processed_data_log_table(connection)
+    log_processed_customers(connection, date, hour, customer_ids)
 
     # Archive and delete the original files
     for dataset_type, dataset_path in dataset_paths.items():
