@@ -1,4 +1,3 @@
-# Import necessary libraries
 import logging
 import os
 import json
@@ -8,6 +7,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 import psycopg2
+from psycopg2.pool import SimpleConnectionPool
 
 # Load environment variables from .env file
 load_dotenv()
@@ -22,6 +22,26 @@ RAW_DATA_PATH = os.path.join(SCRIPT_DIR, '..', 'raw_data')
 PROCESSED_DATA_PATH = os.path.join(SCRIPT_DIR, '..', 'processed_data')
 ARCHIVED_DATA_PATH = os.path.join(SCRIPT_DIR, '..', 'archived_data')
 
+connection_pool = SimpleConnectionPool(
+    minconn=1,
+    maxconn=10,
+    dbname=os.getenv("POSTGRES_DB"),
+    user=os.getenv("POSTGRES_USER"),
+    password=os.getenv("POSTGRES_PASSWORD"),
+    host=os.getenv("DB_HOST"),
+    port=os.getenv("DB_PORT"),
+)
+
+
+# Acquire a connection from the pool
+def get_connection():
+    return connection_pool.getconn()
+
+
+# Release the connection back to the pool
+def release_connection(conn):
+    connection_pool.putconn(conn)
+
 
 # Helper functions
 # TODO schema validation json
@@ -33,15 +53,10 @@ ARCHIVED_DATA_PATH = os.path.join(SCRIPT_DIR, '..', 'archived_data')
 # TODO log records in database for erasure requests and have single source of truth
 
 
+# =========================== DATABASE FUNCTIONS
 # Connect to PostgreSQL
 def connect_to_postgres():
-    connection = psycopg2.connect(
-        user=os.environ["POSTGRES_USER"],
-        password=os.environ["POSTGRES_PASSWORD"],
-        host=os.environ["DB_HOST"],
-        database=os.environ["POSTGRES_DB"],
-    )
-    return connection
+    return get_connection()
 
 
 # Create the processed_data_log table
@@ -80,6 +95,80 @@ def log_processed_customers(connection, date, hour, customer_ids):
                 VALUES (%s, %s, %s);
             """, (actual_date, actual_hour, customer_id))
     connection.commit()
+
+
+# Query the processed_data_log table to get date and hour for a given customer_id
+# def query_processed_data_log(connection, customer_id):
+#     with connection.cursor() as cursor:
+#         cursor.execute("""
+#             SELECT date, hour FROM processed_data_log
+#             WHERE customer_id = %s
+#         """, (customer_id,))
+#         result = cursor.fetchone()
+#         if result:
+#             return result
+#     return None
+
+
+# Locate the processed data file based on date and hour
+# def locate_processed_data_file(date, hour):
+#     processed_data_path = os.path.join(PROCESSED_DATA_PATH, str(date), str(hour))
+#     for filename in os.listdir(processed_data_path):
+#         if filename.endswith(".json"):
+#             return os.path.join(processed_data_path, filename)
+#     return None
+
+
+# Anonymize and update the data in the processed data file
+# def anonymize_and_update_data(file_path, customer_id, erasure_request):
+#     email_to_anonymize = erasure_request.get("email")
+#     anonymized_email = hashlib.sha256(email_to_anonymize.encode()).hexdigest()
+#
+#     with open(file_path, "r") as file:
+#         data = [json.loads(line) for line in file]
+#
+#     for record in data:
+#         if record.get("id") == customer_id:
+#             # Anonymize the email in the record
+#             record["email"] = anonymized_email
+#
+#     with open(file_path, "w") as file:
+#         for record in data:
+#             json.dump(record, file)
+#             file.write("\n")
+
+
+# Archive the updated file
+# def archive_updated_file(file_path, date, hour):
+#     archive_path = os.path.join(ARCHIVED_DATA_PATH, str(date), str(hour))
+#     os.makedirs(archive_path, exist_ok=True)
+#
+#     archive_file = os.path.basename(file_path)
+#     archive_file_path = os.path.join(archive_path, archive_file)
+#
+#     os.rename(file_path, archive_file_path)
+#     logger.info(f"File archived: {archive_file_path}")
+
+
+# def process_erasure_requests(connection, erasure_requests):
+#     for erasure_request in erasure_requests:
+#         customer_id = erasure_request.get("customer-id")
+#         if customer_id:
+#             # Step 1: Query the processed_data_log table to get date and hour
+#             result = query_processed_data_log(connection, customer_id)
+#             if result:
+#                 date, hour = result
+#
+#                 # Step 2: Locate the processed data file
+#                 file_path = locate_processed_data_file(date, hour)
+#
+#                 if file_path:
+#                     # Step 3: Anonymize and update the data
+#                     anonymize_and_update_data(file_path, customer_id, erasure_request)
+#
+#                     # Step 4: Archive the updated file
+#                     archive_updated_file(file_path, date, hour)
+# # ================================ END OF DATABASE FUNCTIONS
 
 
 def extract_data(file_path):
@@ -177,16 +266,35 @@ def anonymize_customer_data(customer_data, erasure_requests):
 
 
 def load_data(data, dataset_type, date, hour):
+    logger.debug(f"Loading data for {dataset_type}")
     # Create the corresponding subdirectories in processed_data
     output_dir = os.path.join(PROCESSED_DATA_PATH, date, hour)
     os.makedirs(output_dir, exist_ok=True)
 
-    # Load processed data to the new location
-    output_path = os.path.join(output_dir, f"{dataset_type}.json")
-    with open(output_path, "a") as file:
-        for record in data:
-            json.dump(record, file)
-            file.write("\n")
+    # Determine the appropriate file extension based on dataset_type
+    if dataset_type.endswith(".json.gz"):
+        file_extension = ".json.gz"
+    elif dataset_type.endswith(".json"):
+        file_extension = ".json"
+    else:
+        raise ValueError(f"Unsupported file extension in dataset_type: {dataset_type}")
+
+    # Remove the existing extension if present
+    dataset_type_without_extension, _ = dataset_type.split(".", 1)
+
+    # Load processed data to the new location only if the dataset is not empty
+    if data:
+        # Use gzip compression if the file extension is .json.gz
+        open_func = gzip.open if file_extension == ".json.gz" else open
+        # Construct the output path
+        output_path = os.path.join(output_dir, f"{dataset_type_without_extension}{file_extension}")
+
+        with open_func(output_path, "wt") as file:
+            for record in data:
+                json.dump(record, file)
+                file.write("\n")
+    else:
+        logger.debug(f"Skipping loading for empty dataset: {dataset_type}")
 
 
 def archive_and_delete(file_path, dataset_type, date, hour, archive_path):
@@ -198,18 +306,14 @@ def archive_and_delete(file_path, dataset_type, date, hour, archive_path):
 
     # Archive the file
     os.rename(file_path, archive_file_path)
-    logger.info(f"File archived: {archive_file_path}")
-
-    print(f"File path is {file_path}")
-    # if dataset_type == "erasure-requests.json":
-    #     os.remove(file_path)
-    #     logger.info(f"Original file deleted: {file_path}")
+    logger.debug(f"File archived: {archive_file_path}")
 
 
-def process_hourly_data(date, hour, available_datasets):
+def process_hourly_data(connection, date, hour, available_datasets):
+    print(date, hour, len(available_datasets), available_datasets)
     dataset_paths = {dataset: os.path.join(RAW_DATA_PATH, f"{date}", f"{hour}", f"{dataset}")
                      for dataset in available_datasets}
-    logger.debug("Dataset Paths:", dataset_paths)  # Debug statement
+    print("Dataset Paths:", dataset_paths)
 
     # Extract raw_data
     customers_data = extract_data(dataset_paths.get("customers.json.gz", ""))
@@ -226,21 +330,19 @@ def process_hourly_data(date, hour, available_datasets):
     anonymized_customers = anonymize_customer_data(transformed_customers, erasure_requests_data)
 
     # Load processed raw_data
-    load_data(anonymized_customers, "customers", date, hour)
-    load_data(transformed_products, "products", date, hour)
-    load_data(transformed_transactions, "transactions", date, hour)
+    load_data(anonymized_customers, "customers.json.gz", date, hour)
+    load_data(transformed_products, "products.json.gz", date, hour)
+    load_data(transformed_transactions, "transactions.json.gz", date, hour)
 
     # Log processed customers
     customer_ids = [customer["id"] for customer in anonymized_customers]
-    connection = connect_to_postgres()
-    create_processed_data_log_table(connection)
     log_processed_customers(connection, date, hour, customer_ids)
 
     # Archive and delete the original files
     for dataset_type, dataset_path in dataset_paths.items():
-        print("Processing dataset:", dataset_type, "Path:", dataset_path)
-
+        # print("Processing dataset:", dataset_type, "Path:", dataset_path)
         archive_and_delete(dataset_path, dataset_type, date, hour, ARCHIVED_DATA_PATH)
+    logger.debug("Processing completed.")
 
 
 def cleanup_empty_directories(directory):
@@ -249,33 +351,48 @@ def cleanup_empty_directories(directory):
             dir_path = os.path.join(root, dir_name)
             if not os.listdir(dir_path):
                 os.rmdir(dir_path)
-                logger.info(f"Empty directory deleted: {dir_path}")
+                logger.debug(f"Empty directory deleted: {dir_path}")
 
 
 def process_all_data():
+    connection = connect_to_postgres()
+    create_processed_data_log_table(connection)
     # Get a sorted list of date folders
-    date_folders = os.listdir(RAW_DATA_PATH)
-    date_folders.sort()
-    # Process all available raw_data
-    for date_folder in date_folders:
-        date_path = os.path.join(RAW_DATA_PATH, date_folder)
+    try:
+        date_folders = os.listdir(RAW_DATA_PATH)
+        date_folders.sort()
+        # Process all available raw_data
+        for date_folder in date_folders:
+            date_path = os.path.join(RAW_DATA_PATH, date_folder)
 
-        # Get a sorted list of hour folders
-        hour_folders = os.listdir(date_path)
-        hour_folders.sort()
+            # Get a sorted list of hour folders
+            hour_folders = os.listdir(date_path)
+            hour_folders.sort()
 
-        for hour_folder in hour_folders:
-            hour_path = os.path.join(date_path, hour_folder)
+            for hour_folder in hour_folders:
+                hour_path = os.path.join(date_path, hour_folder)
 
-            available_datasets = [filename for filename in os.listdir(hour_path) if filename.endswith(".json.gz")]
+                available_datasets = [filename for filename in os.listdir(hour_path) if filename.endswith((".json", ".json.gz"))]
 
-            if available_datasets:
-                process_hourly_data(date_folder, hour_folder, available_datasets)
-            else:
-                logger.warning(f"No datasets found for {date_folder}/{hour_folder}")
+                if available_datasets:
+                    process_hourly_data(connection, date_folder, hour_folder, available_datasets)
+                else:
+                    logger.warning(f"No datasets found for {date_folder}/{hour_folder}")
 
-    # Clean up empty directories in raw_data after processing
-    cleanup_empty_directories(RAW_DATA_PATH)
+                erasure_requests_path = os.path.join(hour_path, "erasure-requests.json.gz")
+
+                # Check if the erasure requests file exists
+                if os.path.exists(erasure_requests_path):
+                    # Process erasure requests
+                    erasure_requests_data = extract_data(erasure_requests_path)
+                    # process_erasure_requests(connection, erasure_requests_data)
+                else:
+                    logger.debug(f"No erasure-requests file found for {date_folder}/{hour_folder}")
+
+        # Clean up empty directories in raw_data after processing
+        cleanup_empty_directories(RAW_DATA_PATH)
+    finally:
+        release_connection(connection)
 
 
 def main():
