@@ -18,12 +18,30 @@ services:
       MINIO_ROOT_PASSWORD: 1234567890
     command: server --console-address ":9001" /data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9001/minio/health/live"]
+      test: ["CMD", "timeout", "5s", "bash", "-c", ":> /dev/tcp/127.0.0.1/9000 || exit 1"]
+      start_period: 5s
+      interval: 10s
+      timeout: 5s
+      retries: 2
+    depends_on:
+      - dwh
+    <<: *common-service-config
+
+
+  dwh:
+    container_name: dwh
+    image: postgres:11-alpine
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U dwh -d hnb" ]
       interval: 30s
       timeout: 10s
       retries: 3
     <<: *common-service-config
-
 
   etl:
     container_name: etl
@@ -33,14 +51,16 @@ services:
     env_file:
       - .env
     healthcheck:
-      test: [ "CMD", "curl", "--fail", "http://localhost:8000/health" ]  # Replace with the actual health check endpoint
+      test: ["CMD-SHELL", "python --version"]
       interval: 30s
       timeout: 10s
       retries: 3
     depends_on:
       - minio
+      - dwh
     command: bash -c "while true; do python src/main.py; sleep 60; done"
     <<: *common-service-config
 
 volumes:
   minio_storage: {}
+  postgres_data: {}

@@ -21,6 +21,8 @@ ARCHIVED_DATA_PATH = os.path.join(SCRIPT_DIR, '..', 'archived_data')
 # Helper functions
 # TODO schema validation json
 # TODO prevent duplicate loading
+# TODO handle missing fields and duplicate skus in transformations
+# TODO add orchestration / workflows for different arrivals
 def extract_data(file_path):
     if not file_path:
         return []
@@ -133,15 +135,16 @@ def archive_and_delete(file_path, dataset_type, date, hour, archive_path):
     archive_file_path = os.path.join(archive_path, date, hour, archive_file)
 
     # Create the archive directory if it doesn't exist
-    os.makedirs(os.path.dirname(archive_path), exist_ok=True)
+    os.makedirs(os.path.dirname(archive_file_path), exist_ok=True)
 
     # Archive the file
     os.rename(file_path, archive_file_path)
-    logger.info(f"File archived: {archive_path}")
+    logger.info(f"File archived: {archive_file_path}")
 
-    # Optionally, you can also delete the file
-    os.remove(file_path)
-    logger.info(f"Original file deleted: {file_path}")
+    print(f"File path is {file_path}")
+    # if dataset_type == "erasure-requests.json":
+    #     os.remove(file_path)
+    #     logger.info(f"Original file deleted: {file_path}")
 
 
 def process_hourly_data(date, hour, available_datasets):
@@ -175,11 +178,28 @@ def process_hourly_data(date, hour, available_datasets):
         archive_and_delete(dataset_path, dataset_type, date, hour, ARCHIVED_DATA_PATH)
 
 
+def cleanup_empty_directories(directory):
+    for root, dirs, files in os.walk(directory, topdown=False):
+        for dir_name in dirs:
+            dir_path = os.path.join(root, dir_name)
+            if not os.listdir(dir_path):
+                os.rmdir(dir_path)
+                logger.info(f"Empty directory deleted: {dir_path}")
+
+
 def process_all_data():
+    # Get a sorted list of date folders
+    date_folders = os.listdir(RAW_DATA_PATH)
+    date_folders.sort()
     # Process all available raw_data
-    for date_folder in os.listdir(RAW_DATA_PATH):
+    for date_folder in date_folders:
         date_path = os.path.join(RAW_DATA_PATH, date_folder)
-        for hour_folder in os.listdir(date_path):
+
+        # Get a sorted list of hour folders
+        hour_folders = os.listdir(date_path)
+        hour_folders.sort()
+
+        for hour_folder in hour_folders:
             hour_path = os.path.join(date_path, hour_folder)
 
             available_datasets = [filename for filename in os.listdir(hour_path) if filename.endswith(".json.gz")]
@@ -188,6 +208,9 @@ def process_all_data():
                 process_hourly_data(date_folder, hour_folder, available_datasets)
             else:
                 logger.warning(f"No datasets found for {date_folder}/{hour_folder}")
+
+    # Clean up empty directories in raw_data after processing
+    cleanup_empty_directories(RAW_DATA_PATH)
 
 
 def main():
