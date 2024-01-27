@@ -19,7 +19,6 @@ services:
     command: server --console-address ":9001" /data
     healthcheck:
       test: ["CMD", "timeout", "5s", "bash", "-c", ":> /dev/tcp/127.0.0.1/9000 || exit 1"]
-      start_period: 5s
       interval: 10s
       timeout: 5s
       retries: 2
