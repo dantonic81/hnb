@@ -20,6 +20,8 @@ RUN pip install --trusted-host pypi.python.org --no-cache-dir -r requirements.tx
 COPY repo.py erasure_requests.py customers.py transactions.py products.py /opt/dagster/app/
 COPY callables /opt/dagster/app/callables/
 COPY raw_data /opt/dagster/app/raw_data/
+COPY processed_data /opt/dagster/app/processed_data/
+COPY archived_data /opt/dagster/app/archived_data/
 # Run dagster gRPC server on port 4000
 
 EXPOSE 4000
