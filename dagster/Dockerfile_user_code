@@ -13,6 +13,7 @@ RUN pip install \
 WORKDIR /opt/dagster/app
 
 COPY repo.py erasure_requests.py customers.py transactions.py products.py /opt/dagster/app/
+COPY callables/ /opt/dagster/app/callables/
 
 # Run dagster gRPC server on port 4000
 
