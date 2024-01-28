@@ -9,12 +9,17 @@ RUN pip install \
     dagster-docker
 
 # Add repository code
-
 WORKDIR /opt/dagster/app
 
-COPY repo.py erasure_requests.py customers.py transactions.py products.py /opt/dagster/app/
-COPY callables/ /opt/dagster/app/callables/
+COPY .env /opt/dagster/app
+COPY requirements.txt /opt/dagster/app
 
+# Install any needed packages specified in requirements.txt
+RUN pip install --trusted-host pypi.python.org --no-cache-dir -r requirements.txt
+
+COPY repo.py erasure_requests.py customers.py transactions.py products.py /opt/dagster/app/
+COPY callables /opt/dagster/app/callables/
+COPY raw_data /opt/dagster/app/raw_data/
 # Run dagster gRPC server on port 4000
 
 EXPOSE 4000
