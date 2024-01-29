@@ -36,7 +36,7 @@ transactions_job = transactions_graph.to_job(name="transactions_job")
 erasure_requests_job = erasure_requests_graph.to_job(name="erasure_requests_job")
 
 
-@schedule(cron_schedule="*/2 * * * *", job=customers_job, execution_timezone="Europe/Zagreb", default_status=DefaultScheduleStatus.RUNNING)
+@schedule(cron_schedule="*/2 * * * *", job=customers_job, execution_timezone="Europe/Zagreb", default_status=DefaultScheduleStatus.STOPPED)
 def my_schedule(_context):
     return {}
 
