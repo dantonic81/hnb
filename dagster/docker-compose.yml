@@ -54,10 +54,6 @@ services:
       DAGSTER_CURRENT_IMAGE: "docker_example_user_code_image"
     networks:
       - docker_example_network
-    volumes:
-      - ./raw_data:/opt/dagster/app/raw_data
-      - ./processed_data:/opt/dagster/app/processed_data
-      - ./archived_data:/opt/dagster/app/archived_data
 
   docker_example_webserver:
     build:

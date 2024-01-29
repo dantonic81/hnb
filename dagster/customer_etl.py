@@ -160,16 +160,16 @@ def load_data(data, dataset_type, date, hour):
         logger.debug(f"Skipping loading for empty dataset: {dataset_type}")
 
 
-# def archive_and_delete(file_path, dataset_type, date, hour, archive_path):
-#     archive_file = dataset_type
-#     archive_file_path = os.path.join(archive_path, date, hour, archive_file)
-#
-#     # Create the archive directory if it doesn't exist
-#     os.makedirs(os.path.dirname(archive_file_path), exist_ok=True)
-#
-#     # Archive the file
-#     os.rename(file_path, archive_file_path)
-#     logger.debug(f"File archived: {archive_file_path}")
+def archive_and_delete(file_path, dataset_type, date, hour, archive_path):
+    archive_file = dataset_type
+    archive_file_path = os.path.join(archive_path, date, hour, archive_file)
+
+    # Create the archive directory if it doesn't exist
+    os.makedirs(os.path.dirname(archive_file_path), exist_ok=True)
+
+    # Archive the file
+    os.rename(file_path, archive_file_path)
+    logger.debug(f"File archived: {archive_file_path}")
 
 
 def process_hourly_data(connection, date, hour, available_datasets):
@@ -193,10 +193,19 @@ def process_hourly_data(connection, date, hour, available_datasets):
     log_processed_customers(connection, date, hour, customer_ids)
 
     # Archive and delete the original files
-    # for dataset_type, dataset_path in dataset_paths.items():
-    #     # print("Processing dataset:", dataset_type, "Path:", dataset_path)
-    #     archive_and_delete(dataset_path, dataset_type, date, hour, ARCHIVED_DATA_PATH)
+    for dataset_type, dataset_path in dataset_paths.items():
+        print("Processing dataset:", dataset_type, "Path:", dataset_path)
+        archive_and_delete(dataset_path, dataset_type, date, hour, ARCHIVED_DATA_PATH)
     logger.debug("Processing completed.")
+
+
+def cleanup_empty_directories(directory):
+    for root, dirs, files in os.walk(directory, topdown=False):
+        for dir_name in dirs:
+            dir_path = os.path.join(root, dir_name)
+            if not os.listdir(dir_path):
+                os.rmdir(dir_path)
+                logger.debug(f"Empty directory deleted: {dir_path}")
 
 
 def process_all_data():
@@ -228,9 +237,9 @@ def process_all_data():
                 else:
                     logger.warning(f"No datasets found for {date_folder}/{hour_folder}")
 
-        #
-        # # Clean up empty directories in raw_data after processing
-        # cleanup_empty_directories(RAW_DATA_PATH)
+
+        # Clean up empty directories in raw_data after processing
+        cleanup_empty_directories(RAW_DATA_PATH)
     finally:
         release_connection(connection)
 
