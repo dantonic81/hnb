@@ -30,7 +30,6 @@ connection_pool = SimpleConnectionPool(
 
 # Helper functions
 # TODO schema validation json
-# TODO prevent duplicate loading
 # TODO handle missing fields and duplicate skus in transformations
 # TODO add orchestration / workflows for different arrivals
 # TODO add tests
@@ -121,10 +120,22 @@ def log_processed_customers(connection, date, hour, customer_ids):
     actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
         for customer_id in customer_ids:
+            # Check if the record already exists
             cursor.execute("""
-                INSERT INTO processed_data_log (date, hour, customer_id) 
-                VALUES (%s, %s, %s);
+                SELECT COUNT(*) FROM processed_data_log 
+                WHERE date = %s AND hour = %s AND customer_id = %s;
             """, (actual_date, actual_hour, customer_id))
+
+            count = cursor.fetchone()[0]
+            if count == 0:
+                # Record doesn't exist, insert it
+                cursor.execute("""
+                    INSERT INTO processed_data_log (date, hour, customer_id) 
+                    VALUES (%s, %s, %s);
+                """, (actual_date, actual_hour, customer_id))
+            else:
+                # Record already exists, log or handle accordingly
+                logger.info(f"Record for customer_id {customer_id} at {actual_date} {actual_hour} already exists.")
     connection.commit()
 
 
@@ -236,7 +247,6 @@ def process_all_data():
                     process_hourly_data(connection, date_folder, hour_folder, available_datasets)
                 else:
                     logger.warning(f"No datasets found for {date_folder}/{hour_folder}")
-
 
         # Clean up empty directories in raw_data after processing
         cleanup_empty_directories(RAW_DATA_PATH)
