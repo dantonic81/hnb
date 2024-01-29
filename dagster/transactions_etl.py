@@ -18,6 +18,20 @@ PROCESSED_DATA_PATH = '/opt/dagster/app/processed_data'
 ARCHIVED_DATA_PATH = '/opt/dagster/app/archived_data'
 
 
+
+# Helper functions
+# todo turn on schema enforcement
+# todo call processing statistics
+# TODO schema validation json
+# TODO handle missing fields and duplicate skus in transformations
+# TODO add orchestration / workflows for different arrivals
+# TODO add tests
+# TODO connect everything to minio
+# TODO log records in database for erasure requests and have single source of truth
+# TODO prevent duplicates from loading
+# todo forget minio and loading directly in container, use volume mounts instead
+
+
 connection_pool = SimpleConnectionPool(
     minconn=1,
     maxconn=10,
@@ -133,11 +147,11 @@ def extract_actual_hour(hour_str):
     return int(hour_str.replace("hour=", ""))
 
 
-def log_processed_transactions(connection, date, hour, transaction_ids):
+def log_processed_transactions(connection, date, hour, transaction_ids, customer_ids):
     actual_date = extract_actual_date(date)
     actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
-        for transaction_id in transaction_ids:
+        for transaction_id, customer_id in zip(transaction_ids, customer_ids):
             # Check if the record already exists
             cursor.execute("""
                 SELECT COUNT(*) FROM data.transactions
@@ -148,12 +162,12 @@ def log_processed_transactions(connection, date, hour, transaction_ids):
             if count == 0:
                 # Record doesn't exist, insert it
                 cursor.execute("""
-                    INSERT INTO data.transactions (date, hour, transaction_id) 
-                    VALUES (%s, %s, %s);
-                """, (actual_date, actual_hour, transaction_id))
+                    INSERT INTO data.transactions (date, hour, transaction_id, customer_id) 
+                    VALUES (%s, %s, %s, %s);
+                """, (actual_date, actual_hour, transaction_id, customer_id))
             else:
                 # Record already exists, log or handle accordingly
-                logger.info(f"Record for transaction_id {transaction_id} at {actual_date} {actual_hour} already exists.")
+                logger.info(f"Record for transaction_id {transaction_id} at {actual_date} {actual_hour} and customer id {customer_id} already exists.")
     connection.commit()
 
 
@@ -171,11 +185,12 @@ def process_hourly_data(connection, date, hour, available_datasets):
     transformed_transactions = transform_and_validate_transactions(transactions_data)
 
     # Load processed raw_data
-    load_data(transformed_transactions, "customers.json.gz", date, hour)
+    load_data(transformed_transactions, "transactions.json.gz", date, hour)
 
     # Log processed transactions
-    customer_ids = [transaction["id"] for transaction in transformed_transactions]
-    log_processed_transactions(connection, date, hour, customer_ids)
+    transaction_ids = [transaction["transaction_id"] for transaction in transformed_transactions]
+    customer_ids = [transaction["customer_id"] for transaction in transformed_transactions]
+    log_processed_transactions(connection, date, hour, transaction_ids, customer_ids)
 
     # Archive and delete the original files
     for dataset_type, dataset_path in dataset_paths.items():
@@ -212,7 +227,7 @@ def process_all_data():
             for hour_folder in hour_folders:
                 hour_path = os.path.join(date_path, hour_folder)
 
-                available_datasets = [filename for filename in os.listdir(hour_path) if filename.startswith("customers")
+                available_datasets = [filename for filename in os.listdir(hour_path) if filename.startswith("transactions")
                                       and filename.endswith((".json", ".json.gz"))]
 
                 if available_datasets:

@@ -24,11 +24,11 @@
             "type": "object",
             "properties": {
               "sku": {"type": "integer"},
-              "quantity": {"type": "integer"},
+              "quanitity": {"type": "integer"},
               "price": {"type": "string"},
               "total": {"type": "string"}
             },
-            "required": ["sku", "quantity", "price", "total"],
+            "required": ["sku", "quanitity", "price", "total"],
             "additionalProperties": false
           }
         },

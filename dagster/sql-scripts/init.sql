@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS data.customers (
 );
 
 CREATE TABLE IF NOT EXISTS data.transactions (
-    transaction_id UUID PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
+    transaction_id UUID,
     date DATE NOT NULL,
     hour INTEGER NOT NULL,
     customer_id INTEGER NOT NULL,

@@ -31,6 +31,8 @@ connection_pool = SimpleConnectionPool(
 )
 
 # Helper functions
+# todo turn on schema enforcement
+# todo call processing statistics
 # TODO schema validation json
 # TODO handle missing fields and duplicate skus in transformations
 # TODO add orchestration / workflows for different arrivals
@@ -61,6 +63,15 @@ def extract_data(file_path):
     with gzip.open(file_path, "rt") as file:
         data = [json.loads(line) for line in file]
     return data
+
+
+def log_processing_statistics(connection, date, hour, dataset_type, record_count, processing_time):
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO data.processing_statistics (date, hour, dataset_type, record_count, processing_time) 
+            VALUES (%s, %s, %s, %s, %s);
+        """, (date, hour, dataset_type, record_count, processing_time))
+    connection.commit()
 
 
 def transform_and_validate_customers(customers_data):
