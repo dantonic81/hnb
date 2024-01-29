@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-RAW_DATA_PATH = os.path.join(SCRIPT_DIR, '..', 'raw_data')
-PROCESSED_DATA_PATH = os.path.join(SCRIPT_DIR, '..', 'processed_data')
-ARCHIVED_DATA_PATH = os.path.join(SCRIPT_DIR, '..', 'archived_data')
+RAW_DATA_PATH = '/opt/dagster/app/raw_data'
+PROCESSED_DATA_PATH = '/opt/dagster/app/processed_data'
+ARCHIVED_DATA_PATH = '/opt/dagster/app/archived_data'
 
 
 connection_pool = SimpleConnectionPool(
@@ -28,6 +28,17 @@ connection_pool = SimpleConnectionPool(
     host=os.getenv("DB_HOST"),
     port=os.getenv("DB_PORT"),
 )
+
+# Helper functions
+# TODO schema validation json
+# TODO prevent duplicate loading
+# TODO handle missing fields and duplicate skus in transformations
+# TODO add orchestration / workflows for different arrivals
+# TODO add tests
+# TODO connect everything to minio
+# TODO log records in database for erasure requests and have single source of truth
+# TODO prevent duplicates from loading
+# todo forget minio and loading directly in container, use volume mounts instead
 
 
 def get_connection():
@@ -66,6 +77,7 @@ def create_processed_data_log_table(connection, schema_name):
 def extract_data(file_path):
     if not file_path:
         return []
+
     # Extract raw_data from a gzipped JSON file
     with gzip.open(file_path, "rt") as file:
         data = [json.loads(line) for line in file]
@@ -118,7 +130,7 @@ def log_processed_customers(connection, date, hour, customer_ids):
 
 
 def load_data(data, dataset_type, date, hour):
-    logger.debug(f"Loading data for {dataset_type}")
+    logger.info(f"Loading data {data} for {dataset_type} {date} {hour}")
     # Create the corresponding subdirectories in processed_data
     output_dir = os.path.join(PROCESSED_DATA_PATH, date, hour)
     os.makedirs(output_dir, exist_ok=True)
@@ -149,16 +161,16 @@ def load_data(data, dataset_type, date, hour):
         logger.debug(f"Skipping loading for empty dataset: {dataset_type}")
 
 
-def archive_and_delete(file_path, dataset_type, date, hour, archive_path):
-    archive_file = dataset_type
-    archive_file_path = os.path.join(archive_path, date, hour, archive_file)
-
-    # Create the archive directory if it doesn't exist
-    os.makedirs(os.path.dirname(archive_file_path), exist_ok=True)
-
-    # Archive the file
-    os.rename(file_path, archive_file_path)
-    logger.debug(f"File archived: {archive_file_path}")
+# def archive_and_delete(file_path, dataset_type, date, hour, archive_path):
+#     archive_file = dataset_type
+#     archive_file_path = os.path.join(archive_path, date, hour, archive_file)
+#
+#     # Create the archive directory if it doesn't exist
+#     os.makedirs(os.path.dirname(archive_file_path), exist_ok=True)
+#
+#     # Archive the file
+#     os.rename(file_path, archive_file_path)
+#     logger.debug(f"File archived: {archive_file_path}")
 
 
 def process_hourly_data(connection, date, hour, available_datasets):
@@ -169,6 +181,7 @@ def process_hourly_data(connection, date, hour, available_datasets):
 
     # Extract raw_data
     customers_data = extract_data(dataset_paths.get("customers.json.gz", ""))
+    print("Number of customers:", len(customers_data))
 
     # Transform and validate raw_data
     transformed_customers = transform_and_validate_customers(customers_data)
@@ -181,9 +194,9 @@ def process_hourly_data(connection, date, hour, available_datasets):
     log_processed_customers(connection, date, hour, customer_ids)
 
     # Archive and delete the original files
-    for dataset_type, dataset_path in dataset_paths.items():
-        # print("Processing dataset:", dataset_type, "Path:", dataset_path)
-        archive_and_delete(dataset_path, dataset_type, date, hour, ARCHIVED_DATA_PATH)
+    # for dataset_type, dataset_path in dataset_paths.items():
+    #     # print("Processing dataset:", dataset_type, "Path:", dataset_path)
+    #     archive_and_delete(dataset_path, dataset_type, date, hour, ARCHIVED_DATA_PATH)
     logger.debug("Processing completed.")
 
 
@@ -195,6 +208,7 @@ def process_all_data():
     try:
         date_folders = os.listdir(RAW_DATA_PATH)
         date_folders.sort()
+        print("Date Folders:", date_folders)
         # Process all available raw_data
         for date_folder in date_folders:
             date_path = os.path.join(RAW_DATA_PATH, date_folder)
@@ -202,6 +216,7 @@ def process_all_data():
             # Get a sorted list of hour folders
             hour_folders = os.listdir(date_path)
             hour_folders.sort()
+            print(f"Hour Folders for {date_folder}:", hour_folders)
 
             for hour_folder in hour_folders:
                 hour_path = os.path.join(date_path, hour_folder)

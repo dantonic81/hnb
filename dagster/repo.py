@@ -1,4 +1,4 @@
-from dagster import FilesystemIOManager, graph, op, repository, schedule
+from dagster import DefaultScheduleStatus, FilesystemIOManager, graph, op, repository, schedule
 from dagster_docker import docker_executor
 from customers import customers_graph
 from transactions import transactions_graph
@@ -36,12 +36,12 @@ transactions_job = transactions_graph.to_job(name="transactions_job")
 erasure_requests_job = erasure_requests_graph.to_job(name="erasure_requests_job")
 
 
-# @schedule(cron_schedule="* * * * *", job=my_job, execution_timezone="US/Central")
-# def my_schedule(_context):
-#     return {}
+@schedule(cron_schedule="*/2 * * * *", job=customers_job, execution_timezone="Europe/Zagreb", default_status=DefaultScheduleStatus.RUNNING)
+def my_schedule(_context):
+    return {}
 
 
 @repository
 def deploy_docker_repository():
     # return [my_job, my_step_isolated_job, my_schedule, my_customers_job]
-    return [customers_job, products_job, transactions_job, erasure_requests_job]
+    return [my_schedule, customers_job, products_job, transactions_job, erasure_requests_job]
