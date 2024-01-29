@@ -22,24 +22,6 @@ services:
       retries: 3
     <<: *common-service-config
 
-#  etl:
-#    container_name: etl
-#    build:
-#      context: .
-#      dockerfile: ./src/Dockerfile
-#    env_file:
-#      - .env
-#    healthcheck:
-#      test: ["CMD-SHELL", "python --version"]
-#      interval: 30s
-#      timeout: 10s
-#      retries: 3
-#    depends_on:
-#      - minio
-#      - dwh
-#    command: bash -c "while true; do python src/main.py; sleep 60; done"
-#    <<: *common-service-config
-
   docker_example_user_code:
     build:
       context: .
@@ -108,7 +90,6 @@ services:
       - docker_example_user_code
 
 volumes:
-  minio_storage: {}
   postgres_data: {}
 
 networks:

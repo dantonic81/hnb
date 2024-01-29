@@ -5,6 +5,8 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 from psycopg2.pool import SimpleConnectionPool
+import jsonschema
+from jsonschema import validate
 
 load_dotenv()
 
@@ -83,25 +85,21 @@ def extract_data(file_path):
 
 
 def transform_and_validate_customers(customers_data):
-    # Transform and validate customer raw_data
-    # Ensure required fields are populated, id is unique, and other constraints
-    unique_ids = set()
+    # Load the JSON schema
+    with open("customer_schema.json", "r") as schema_file:
+        schema = json.load(schema_file)
 
+    # Validate each customer record against the schema
     for customer in customers_data:
-        if 'id' not in customer or 'first_name' not in customer or 'last_name' not in customer or 'email' not in customer:
-            # Log or handle missing required fields
-            continue
+        try:
+            validate(instance=customer, schema=schema)
+        except jsonschema.exceptions.ValidationError as e:
+            # Log or handle validation errors
+            print(f"Validation error for customer: {e}")
 
-        if customer['id'] in unique_ids:
-            # Log or handle duplicate ids
-            continue
-
-        # Additional validation logic (e.g., email format, date_of_birth format)
-
-        # Update last_change timestamp
+    # Update last_change timestamp
+    for customer in customers_data:
         customer['last_change'] = datetime.utcnow().isoformat()
-
-        unique_ids.add(customer['id'])
 
     return customers_data
 

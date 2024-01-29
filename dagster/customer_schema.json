@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {"type": "string"},
+    "first_name": {"type": "string"},
+    "last_name": {"type": "string"},
+    "date_of_birth": {"type": "string", "format": "date"},
+    "email": {"type": "string", "format": "email"},
+    "phone_number": {"type": "string"},
+    "address": {"type": "string"},
+    "city": {"type": "string"},
+    "country": {"type": "string"},
+    "postcode": {"type": "string"},
+    "last_change": {"type": "string", "format": "date-time"},
+    "segment": {"type": "string"}
+  },
+  "required": ["id", "first_name", "last_name", "email"],
+  "additionalProperties": false
+}
