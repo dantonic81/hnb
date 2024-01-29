@@ -13,8 +13,6 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RAW_DATA_PATH = '/opt/dagster/app/raw_data'
 PROCESSED_DATA_PATH = '/opt/dagster/app/processed_data'
 ARCHIVED_DATA_PATH = '/opt/dagster/app/archived_data'
@@ -30,16 +28,6 @@ connection_pool = SimpleConnectionPool(
     port=os.getenv("DB_PORT"),
 )
 
-# Helper functions
-# TODO schema validation json
-# TODO handle missing fields and duplicate skus in transformations
-# TODO add orchestration / workflows for different arrivals
-# TODO add tests
-# TODO connect everything to minio
-# TODO log records in database for erasure requests and have single source of truth
-# TODO prevent duplicates from loading
-# todo forget minio and loading directly in container, use volume mounts instead
-
 
 def get_connection():
     return connection_pool.getconn()
@@ -53,6 +41,15 @@ def connect_to_postgres():
     return get_connection()
 
 
+def log_processing_statistics(connection, date, hour, dataset_type, record_count, processing_time):
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO data.processing_statistics (date, hour, dataset_type, record_count, processing_time) 
+            VALUES (%s, %s, %s, %s, %s);
+        """, (date, hour, dataset_type, record_count, processing_time))
+    connection.commit()
+
+
 def extract_data(file_path):
     if not file_path:
         return []
@@ -61,59 +58,6 @@ def extract_data(file_path):
     with gzip.open(file_path, "rt") as file:
         data = [json.loads(line) for line in file]
     return data
-
-
-def transform_and_validate_customers(customers_data):
-    # Load the JSON schema
-    with open("customer_schema.json", "r") as schema_file:
-        schema = json.load(schema_file)
-
-    # Validate each customer record against the schema
-    for customer in customers_data:
-        try:
-            validate(instance=customer, schema=schema)
-        except jsonschema.exceptions.ValidationError as e:
-            # Log or handle validation errors
-            print(f"Validation error for customer: {e}")
-
-    # Update last_change timestamp
-    for customer in customers_data:
-        customer['last_change'] = datetime.utcnow().isoformat()
-
-    return customers_data
-
-
-def extract_actual_date(date_str):
-    return datetime.strptime(date_str.replace("date=", ""), "%Y-%m-%d").date()
-
-
-# Extract the actual hour from the "hour=00" format
-def extract_actual_hour(hour_str):
-    return int(hour_str.replace("hour=", ""))
-
-
-def log_processed_customers(connection, date, hour, customer_ids):
-    actual_date = extract_actual_date(date)
-    actual_hour = extract_actual_hour(hour)
-    with connection.cursor() as cursor:
-        for customer_id in customer_ids:
-            # Check if the record already exists
-            cursor.execute("""
-                SELECT COUNT(*) FROM data.customers 
-                WHERE date = %s AND hour = %s AND customer_id = %s;
-            """, (actual_date, actual_hour, customer_id))
-
-            count = cursor.fetchone()[0]
-            if count == 0:
-                # Record doesn't exist, insert it
-                cursor.execute("""
-                    INSERT INTO data.customers (date, hour, customer_id) 
-                    VALUES (%s, %s, %s);
-                """, (actual_date, actual_hour, customer_id))
-            else:
-                # Record already exists, log or handle accordingly
-                logger.info(f"Record for customer_id {customer_id} at {actual_date} {actual_hour} already exists.")
-    connection.commit()
 
 
 def load_data(data, dataset_type, date, hour):
@@ -160,6 +104,59 @@ def archive_and_delete(file_path, dataset_type, date, hour, archive_path):
     logger.debug(f"File archived: {archive_file_path}")
 
 
+def transform_and_validate_transactions(transactions_data):
+    # Load the JSON schema
+    with open("transactions_schema.json", "r") as schema_file:
+        schema = json.load(schema_file)
+
+    # Validate each transaction record against the schema
+    for transaction in transactions_data:
+        try:
+            validate(instance=transaction, schema=schema)
+        except jsonschema.exceptions.ValidationError as e:
+            # Log or handle validation errors
+            print(f"Validation error for transaction: {e}")
+
+    # Update last_change timestamp
+    for transaction in transactions_data:
+        transaction['last_change'] = datetime.utcnow().isoformat()
+
+    return transactions_data
+
+
+def extract_actual_date(date_str):
+    return datetime.strptime(date_str.replace("date=", ""), "%Y-%m-%d").date()
+
+
+# Extract the actual hour from the "hour=00" format
+def extract_actual_hour(hour_str):
+    return int(hour_str.replace("hour=", ""))
+
+
+def log_processed_transactions(connection, date, hour, transaction_ids):
+    actual_date = extract_actual_date(date)
+    actual_hour = extract_actual_hour(hour)
+    with connection.cursor() as cursor:
+        for transaction_id in transaction_ids:
+            # Check if the record already exists
+            cursor.execute("""
+                SELECT COUNT(*) FROM data.transactions
+                WHERE date = %s AND hour = %s AND transaction_id = %s;
+            """, (actual_date, actual_hour, transaction_id))
+
+            count = cursor.fetchone()[0]
+            if count == 0:
+                # Record doesn't exist, insert it
+                cursor.execute("""
+                    INSERT INTO data.transactions (date, hour, transaction_id) 
+                    VALUES (%s, %s, %s);
+                """, (actual_date, actual_hour, transaction_id))
+            else:
+                # Record already exists, log or handle accordingly
+                logger.info(f"Record for transaction_id {transaction_id} at {actual_date} {actual_hour} already exists.")
+    connection.commit()
+
+
 def process_hourly_data(connection, date, hour, available_datasets):
     print(date, hour, len(available_datasets), available_datasets)
     dataset_paths = {dataset: os.path.join(RAW_DATA_PATH, f"{date}", f"{hour}", f"{dataset}")
@@ -167,18 +164,18 @@ def process_hourly_data(connection, date, hour, available_datasets):
     print("Dataset Paths:", dataset_paths)
 
     # Extract raw_data
-    customers_data = extract_data(dataset_paths.get("customers.json.gz", ""))
-    print("Number of customers:", len(customers_data))
+    transactions_data = extract_data(dataset_paths.get("transactions.json.gz", ""))
+    print("Number of transactions:", len(transactions_data))
 
     # Transform and validate raw_data
-    transformed_customers = transform_and_validate_customers(customers_data)
+    transformed_transactions = transform_and_validate_transactions(transactions_data)
 
     # Load processed raw_data
-    load_data(transformed_customers, "customers.json.gz", date, hour)
+    load_data(transformed_transactions, "customers.json.gz", date, hour)
 
-    # Log processed customers
-    customer_ids = [customer["id"] for customer in transformed_customers]
-    log_processed_customers(connection, date, hour, customer_ids)
+    # Log processed transactions
+    customer_ids = [transaction["id"] for transaction in transformed_transactions]
+    log_processed_transactions(connection, date, hour, customer_ids)
 
     # Archive and delete the original files
     for dataset_type, dataset_path in dataset_paths.items():

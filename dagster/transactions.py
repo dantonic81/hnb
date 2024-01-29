@@ -1,11 +1,12 @@
 from dagster import graph, op
+from transactions_etl import main
 
 
 @op
-def transactions_op():
-    pass
+def process_transactions_op():
+    main()
 
 
 @graph
 def transactions_graph():
-    transactions_op()
+    process_transactions_op()
