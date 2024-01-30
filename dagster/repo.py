@@ -1,8 +1,8 @@
 from dagster import DefaultScheduleStatus, FilesystemIOManager, graph, op, repository, schedule
 from customers import customers_graph
 from transactions import transactions_graph
-from erasure_requests import erasure_requests_graph
 from products import products_graph
+from erasure_requests import erasure_requests_graph
 
 
 customers_job = customers_graph.to_job(name="customers_job")
@@ -33,4 +33,4 @@ def erasure_requests_schedule(_context):
 
 @repository
 def deploy_docker_repository():
-    return [customers_schedule, transactions_schedule, products_schedule, customers_job, products_job, transactions_job, erasure_requests_job]
+    return [customers_schedule, transactions_schedule, products_schedule, erasure_requests_schedule, customers_job, products_job, transactions_job, erasure_requests_job]
