@@ -38,6 +38,11 @@ services:
       DAGSTER_CURRENT_IMAGE: "docker_example_user_code_image"
     networks:
       - docker_example_network
+    healthcheck:
+      test: ["CMD", "timeout", "5s", "bash", "-c", ":> /dev/tcp/127.0.0.1/4000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   docker_example_webserver:
     build:
@@ -68,6 +73,11 @@ services:
     depends_on:
       - dwh
       - docker_example_user_code
+    healthcheck:
+      test: ["CMD", "timeout", "5s", "bash", "-c", ":> /dev/tcp/127.0.0.1/3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   docker_example_daemon:
     build:
@@ -90,6 +100,11 @@ services:
     depends_on:
       - dwh
       - docker_example_user_code
+    healthcheck:
+      test: ["CMD", "dagster-daemon", "liveness-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   postgres_data: {}
