@@ -236,11 +236,72 @@ def extract_actual_hour(hour_str):
     return int(hour_str.replace("hour=", ""))
 
 
-def log_processed_transactions(connection, date, hour, transaction_ids, customer_ids):
+def get_delivery_address_by_transaction_id(connection, transaction_id):
+    """
+    Retrieve delivery address information for a given transaction_id.
+
+    Parameters:
+    - connection: Database connection object
+    - transaction_id: ID of the transaction
+
+    Returns:
+    - Dictionary containing delivery address information
+    """
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT address, postcode, city, country
+            FROM data.delivery_addresses
+            WHERE transaction_id = %s;
+        """, (transaction_id,))
+
+        result = cursor.fetchone()
+
+    return {
+        'address': result[0],
+        'postcode': result[1],
+        'city': result[2],
+        'country': result[3]
+    } if result else None
+
+
+def get_purchases_by_transaction_id(connection, transaction_id):
+    """
+    Retrieve purchase information for a given transaction_id.
+
+    Parameters:
+    - connection: Database connection object
+    - transaction_id: ID of the transaction
+
+    Returns:
+    - List of dictionaries containing purchase information
+    """
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT product_sku, quantity, price, total
+            FROM data.purchases
+            WHERE transaction_id = %s;
+        """, (transaction_id,))
+
+        results = cursor.fetchall()
+
+    # Convert the results to a list of dictionaries
+    purchases = []
+    for result in results:
+        purchases.append({
+            'product_sku': result[0],
+            'quantity': result[1],
+            'price': result[2],
+            'total': result[3]
+        })
+
+    return purchases if purchases else None
+
+
+def log_processed_transactions(connection, date, hour, transaction_ids, transaction_times, customer_ids):
     actual_date = extract_actual_date(date)
     actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
-        for transaction_id, customer_id in zip(transaction_ids, customer_ids):
+        for transaction_id, transaction_time, customer_id in zip(transaction_ids, transaction_times, customer_ids):
             # Check if the record already exists
             cursor.execute("""
                 SELECT COUNT(*) FROM data.transactions
@@ -251,9 +312,28 @@ def log_processed_transactions(connection, date, hour, transaction_ids, customer
             if count == 0:
                 # Record doesn't exist, insert it
                 cursor.execute("""
-                    INSERT INTO data.transactions (record_date, record_hour, transaction_id, customer_id) 
-                    VALUES (%s, %s, %s, %s);
-                """, (actual_date, actual_hour, transaction_id, customer_id))
+                    INSERT INTO data.transactions (record_date, record_hour, transaction_id, transaction_time, customer_id) 
+                    VALUES (%s, %s, %s, %s, %s);
+                """, (actual_date, actual_hour, transaction_id, transaction_time, customer_id))
+
+                # Insert delivery_address into delivery_addresses table
+                delivery_address = get_delivery_address_by_transaction_id(connection, transaction_id)
+                if delivery_address:
+                    cursor.execute("""
+                        INSERT INTO data.delivery_addresses (transaction_id, address, postcode, city, country)
+                        VALUES (%s, %s, %s, %s, %s);
+                    """, (transaction_id, delivery_address['address'], delivery_address['postcode'], delivery_address['city'],
+                          delivery_address['country']))
+
+                purchases = get_purchases_by_transaction_id(connection, transaction_id)
+                # Check if purchases is not None before iterating
+                if purchases is not None:
+                    for purchase in purchases:
+                        cursor.execute("""
+                            INSERT INTO data.purchases (transaction_id, product_sku, quantity, price, total)
+                            VALUES (%s, %s, %s, %s, %s);
+                        """, (transaction_id, purchase['sku'], purchase['quantity'], purchase['price'], purchase['total']))
+
             else:
                 # Record already exists, log or handle accordingly
                 logger.info(f"Record for transaction_id {transaction_id} at {actual_date} {actual_hour} and customer id {customer_id} already exists.")
@@ -282,7 +362,8 @@ def process_hourly_data(connection, date, hour, available_datasets):
     # Log processed transactions
     transaction_ids = [transaction["transaction_id"] for transaction in transformed_transactions]
     customer_ids = [transaction["customer_id"] for transaction in transformed_transactions]
-    log_processed_transactions(connection, date, hour, transaction_ids, customer_ids)
+    transaction_times = [transaction["transaction_time"] for transaction in transformed_transactions]
+    log_processed_transactions(connection, date, hour, transaction_ids, transaction_times, customer_ids)
 
     # Record the end time
     end_time = datetime.now()

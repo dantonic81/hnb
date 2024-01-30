@@ -30,11 +30,30 @@ CREATE TABLE IF NOT EXISTS data.customers (
 
 CREATE TABLE IF NOT EXISTS data.transactions (
     id SERIAL PRIMARY KEY,
-    transaction_id UUID,
+    transaction_id UUID UNIQUE NOT NULL,
+    transaction_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    customer_id INTEGER NOT NULL,
     record_date DATE NOT NULL,
     record_hour INTEGER NOT NULL,
-    customer_id INTEGER NOT NULL,
     processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS data.delivery_addresses (
+    id SERIAL PRIMARY KEY,
+    transaction_id UUID REFERENCES data.transactions(transaction_id),
+    address TEXT NOT NULL,
+    postcode TEXT NOT NULL,
+    city TEXT NOT NULL,
+    country TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS data.purchases (
+    id SERIAL PRIMARY KEY,
+    transaction_id UUID REFERENCES data.transactions(transaction_id),
+    product_sku INTEGER NOT NULL,
+    quantity INTEGER NOT NULL,
+    price NUMERIC(10, 2) NOT NULL,
+    total NUMERIC(10, 2) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS data.products (
