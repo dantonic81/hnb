@@ -128,27 +128,101 @@ def archive_and_delete(file_path, dataset_type, date, hour, archive_path):
     logger.debug(f"File archived: {archive_file_path}")
 
 
+def is_existing_customer(connection, customer_id):
+    with connection.cursor() as cursor:
+        # Check if the customer_id exists in the customer dataset
+        cursor.execute("""
+            SELECT COUNT(*) FROM data.customers
+            WHERE id = %s;
+        """, (customer_id,))
+
+        count = cursor.fetchone()[0]
+
+    return count > 0
+
+
+def is_existing_product(connection, sku):
+    with connection.cursor() as cursor:
+        # Check if the sku exists in the product dataset
+        cursor.execute("""
+            SELECT COUNT(*) FROM data.products
+            WHERE sku = %s;
+        """, (sku,))
+
+        count = cursor.fetchone()[0]
+
+    return count > 0
+
+
+def are_valid_product_skus(connection, products):
+    for product in products:
+        sku = product.get('sku')
+        if not is_existing_product(connection, sku):
+            return False
+    return True
+
+
+def is_valid_total_cost(products, total_cost):
+    # Calculate the total cost based on individual product prices and quantities
+    calculated_total_cost = sum(float(product.get('price', 0)) * float(product.get('quanitity', 0)) for product in products)
+    print(f"Calculated Total Cost: {calculated_total_cost}, Provided Total Cost: {total_cost}")
+    # Compare the calculated total cost with the provided total_cost
+    return round(calculated_total_cost, 2) == round(float(total_cost), 2)
+
+
 def transform_and_validate_transactions(connection, transactions_data, date, hour):
     # Load the JSON schema
     with open("transactions_schema.json", "r") as schema_file:
         schema = json.load(schema_file)
 
     valid_transactions = []
+    unique_transaction_ids = set()
 
     # Validate each transaction record against the schema
     for transaction in transactions_data:
         try:
             validate(instance=transaction, schema=schema)
+
+            # Check uniqueness of transaction_id
+            transaction_id = transaction.get('transaction_id')
+            if transaction_id in unique_transaction_ids:
+                # Log or handle duplicate transaction_id
+                print(f"Duplicate transaction_id found: {transaction_id}")
+                log_invalid_transaction(connection, transaction, "Duplicate transaction_id", date, hour)
+                continue
+
+            unique_transaction_ids.add(transaction_id)
+
+            # Check if customer_id refers to an existing customer
+            customer_id = transaction.get('customer_id')
+            if not is_existing_customer(connection, customer_id):
+                # Log or handle invalid customer_id
+                print(f"Invalid customer_id found: {customer_id}")
+                log_invalid_transaction(connection, transaction, f"Invalid customer_id: {customer_id}", date, hour)
+                continue
+
+            # Check if product skus correspond to existing products
+            if not are_valid_product_skus(connection, transaction.get('purchases', {}).get('products', [])):
+                # Log or handle invalid product skus
+                print(f"Invalid product skus found in transaction_id: {transaction_id}")
+                log_invalid_transaction(connection, transaction, f"Invalid product skus", date, hour)
+                continue
+
+            # Check if total_cost matches the sum of individual product costs
+            purchases = transaction.get('purchases', {})
+            if not is_valid_total_cost(purchases.get('products', []), purchases.get('total_cost')):
+                # Log or handle invalid total_cost
+                print(f"Invalid total_cost found in transaction_id: {transaction_id}")
+                log_invalid_transaction(connection, transaction, f"Invalid total_cost", date, hour)
+                continue
+
             valid_transactions.append(transaction)
+
         except jsonschema.exceptions.ValidationError as e:
             # Log or handle validation errors
             print(f"Validation error for transaction: {e}")
             log_invalid_transaction(connection, transaction, str(e), date, hour)
             continue
-
-    # Update last_change timestamp
-    for transaction in valid_transactions:
-        transaction['last_change'] = datetime.utcnow().isoformat()
 
     return valid_transactions
 
@@ -216,7 +290,6 @@ def process_hourly_data(connection, date, hour, available_datasets):
     # Calculate processing time
     processing_time = end_time - start_time
     log_processing_statistics(connection, date, hour, "transactions.json.gz", len(transformed_transactions), processing_time)
-
 
     # Archive and delete the original files
     for dataset_type, dataset_path in dataset_paths.items():
