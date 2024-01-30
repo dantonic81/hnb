@@ -55,10 +55,25 @@ def log_invalid_customer(connection, customer, error_message, date, hour):
     actual_date = extract_actual_date(date)
     actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
+        # Check if the customer with the same id already exists
         cursor.execute("""
-            INSERT INTO data.invalid_customers (record_date, record_hour, id, first_name, last_name, email, error_message) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s);
-        """, (actual_date, actual_hour, customer.get("id"), customer.get("first_name"), customer.get("last_name"), customer.get("email"), error_message))
+            SELECT id FROM data.invalid_customers WHERE id = %s;
+        """, (customer.get("id"),))
+
+        existing_record = cursor.fetchone()
+
+        if existing_record:
+            # Update the existing record if needed
+            cursor.execute("""
+                UPDATE data.invalid_customers
+                SET error_message = %s
+                WHERE id = %s;
+            """, (error_message, customer.get("id")))
+        else:
+            cursor.execute("""
+                INSERT INTO data.invalid_customers (record_date, record_hour, id, first_name, last_name, email, error_message) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s);
+            """, (actual_date, actual_hour, customer.get("id"), customer.get("first_name"), customer.get("last_name"), customer.get("email"), error_message))
     connection.commit()
 
 
