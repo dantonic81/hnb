@@ -63,7 +63,7 @@ def log_invalid_customer(connection, customer, error_message, date, hour):
     actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
         cursor.execute("""
-            INSERT INTO data.invalid_customers (date, hour, id, first_name, last_name, email, error_message) 
+            INSERT INTO data.invalid_customers (record_date, record_hour, id, first_name, last_name, email, error_message) 
             VALUES (%s, %s, %s, %s, %s, %s, %s);
         """, (actual_date, actual_hour, customer.get("id"), customer.get("first_name"), customer.get("last_name"), customer.get("email"), error_message))
     connection.commit()
@@ -82,7 +82,7 @@ def extract_data(file_path):
 def log_processing_statistics(connection, date, hour, dataset_type, record_count, processing_time):
     with connection.cursor() as cursor:
         cursor.execute("""
-            INSERT INTO data.processing_statistics (date, hour, dataset_type, record_count, processing_time) 
+            INSERT INTO data.processing_statistics (record_date, record_hour, dataset_type, record_count, processing_time) 
             VALUES (%s, %s, %s, %s, %s);
         """, (date, hour, dataset_type, record_count, processing_time))
     connection.commit()
@@ -95,11 +95,26 @@ def transform_and_validate_customers(connection, customers_data, date, hour):
 
     valid_customers = []
 
+    # Keep track of unique ids
+    unique_ids = set()
+
     # Validate each customer record against the schema
     for customer in customers_data:
         try:
             validate(instance=customer, schema=schema)
-            valid_customers.append(customer)
+
+            # Convert 'id' to integer
+            customer_id = int(customer['id'])
+
+            # Check uniqueness of id
+            if customer_id not in unique_ids:
+                unique_ids.add(customer_id)
+                valid_customers.append(customer)
+            else:
+                # Log or handle duplicate id
+                print(f"Duplicate id found for customer: {customer['id']}")
+                log_invalid_customer(connection, customer, "Duplicate id", date, hour)
+
         except jsonschema.exceptions.ValidationError as e:
             # Log or handle validation errors
             print(f"Validation error for customer: {e}")
@@ -122,24 +137,24 @@ def extract_actual_hour(hour_str):
     return int(hour_str.replace("hour=", ""))
 
 
-def log_processed_customers(connection, date, hour, customer_ids):
+def log_processed_customers(connection, date, hour, customer_ids, first_names, last_names, emails):
     actual_date = extract_actual_date(date)
     actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
-        for customer_id in customer_ids:
+        for customer_id, first_name, last_name, email in zip(customer_ids, first_names, last_names, emails):
             # Check if the record already exists
             cursor.execute("""
                 SELECT COUNT(*) FROM data.customers 
-                WHERE date = %s AND hour = %s AND customer_id = %s;
+                WHERE record_date = %s AND record_hour = %s AND id = %s;
             """, (actual_date, actual_hour, customer_id))
 
             count = cursor.fetchone()[0]
             if count == 0:
                 # Record doesn't exist, insert it
                 cursor.execute("""
-                    INSERT INTO data.customers (date, hour, customer_id) 
-                    VALUES (%s, %s, %s);
-                """, (actual_date, actual_hour, customer_id))
+                    INSERT INTO data.customers (record_date, record_hour, id, first_name, last_name, email) 
+                    VALUES (%s, %s, %s, %s, %s, %s);
+                """, (actual_date, actual_hour, customer_id, first_name, last_name, email))
             else:
                 # Record already exists, log or handle accordingly
                 logger.info(f"Record for customer_id {customer_id} at {actual_date} {actual_hour} already exists.")
@@ -208,7 +223,10 @@ def process_hourly_data(connection, date, hour, available_datasets):
 
     # Log processed customers
     customer_ids = [customer["id"] for customer in transformed_customers]
-    log_processed_customers(connection, date, hour, customer_ids)
+    first_names = [customer["first_name"] for customer in transformed_customers]
+    last_names = [customer["last_name"] for customer in transformed_customers]
+    emails = [customer["email"] for customer in transformed_customers]
+    log_processed_customers(connection, date, hour, customer_ids, first_names, last_names, emails)
 
     # Archive and delete the original files
     for dataset_type, dataset_path in dataset_paths.items():

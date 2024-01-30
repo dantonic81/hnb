@@ -1,7 +1,7 @@
 {
   "type": "object",
   "properties": {
-    "id": {"type": "string"},
+    "id": {"type": "string", "unique":  true},
     "first_name": {"type": "string"},
     "last_name": {"type": "string"},
     "date_of_birth": {"anyOf": [{"type": "string", "format": "date"}, {"type": "null"}]},
