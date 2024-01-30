@@ -23,17 +23,10 @@ INVALID_RECORDS_TABLE = 'data.invalid_transactions'
 
 
 # Helper functions
-# TODO quarantine invalid records
-# todo turn on schema enforcement
-# todo call processing statistics
-# TODO schema validation json
 # TODO handle missing fields and duplicate skus in transformations
-# TODO add orchestration / workflows for different arrivals
 # TODO add tests
 # TODO connect everything to minio
 # TODO log records in database for erasure requests and have single source of truth
-# TODO prevent duplicates from loading
-# todo forget minio and loading directly in container, use volume mounts instead
 
 
 connection_pool = SimpleConnectionPool(
@@ -64,18 +57,20 @@ def log_invalid_transaction(connection, transaction, error_message, date, hour):
     actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
         cursor.execute("""
-            INSERT INTO data.invalid_transactions (date, hour, transaction_id, customer_id, error_message) 
+            INSERT INTO data.invalid_transactions (record_date, record_hour, transaction_id, customer_id, error_message) 
             VALUES (%s, %s, %s, %s, %s);
         """, (actual_date, actual_hour, transaction.get("transaction_id"), transaction.get("customer_id"), error_message))
     connection.commit()
 
 
 def log_processing_statistics(connection, date, hour, dataset_type, record_count, processing_time):
+    actual_date = extract_actual_date(date)
+    actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
         cursor.execute("""
-            INSERT INTO data.processing_statistics (date, hour, dataset_type, record_count, processing_time) 
+            INSERT INTO data.processing_statistics (record_date, record_hour, dataset_type, record_count, processing_time) 
             VALUES (%s, %s, %s, %s, %s);
-        """, (date, hour, dataset_type, record_count, processing_time))
+        """, (actual_date, actual_hour, dataset_type, record_count, processing_time))
     connection.commit()
 
 
@@ -175,14 +170,14 @@ def log_processed_transactions(connection, date, hour, transaction_ids, customer
             # Check if the record already exists
             cursor.execute("""
                 SELECT COUNT(*) FROM data.transactions
-                WHERE date = %s AND hour = %s AND transaction_id = %s;
+                WHERE record_date = %s AND record_hour = %s AND transaction_id = %s;
             """, (actual_date, actual_hour, transaction_id))
 
             count = cursor.fetchone()[0]
             if count == 0:
                 # Record doesn't exist, insert it
                 cursor.execute("""
-                    INSERT INTO data.transactions (date, hour, transaction_id, customer_id) 
+                    INSERT INTO data.transactions (record_date, record_hour, transaction_id, customer_id) 
                     VALUES (%s, %s, %s, %s);
                 """, (actual_date, actual_hour, transaction_id, customer_id))
             else:
@@ -196,6 +191,9 @@ def process_hourly_data(connection, date, hour, available_datasets):
     dataset_paths = {dataset: os.path.join(RAW_DATA_PATH, f"{date}", f"{hour}", f"{dataset}")
                      for dataset in available_datasets}
     print("Dataset Paths:", dataset_paths)
+
+    # Record the start time
+    start_time = datetime.now()
 
     # Extract raw_data
     transactions_data = extract_data(dataset_paths.get("transactions.json.gz", ""))
@@ -211,6 +209,14 @@ def process_hourly_data(connection, date, hour, available_datasets):
     transaction_ids = [transaction["transaction_id"] for transaction in transformed_transactions]
     customer_ids = [transaction["customer_id"] for transaction in transformed_transactions]
     log_processed_transactions(connection, date, hour, transaction_ids, customer_ids)
+
+    # Record the end time
+    end_time = datetime.now()
+
+    # Calculate processing time
+    processing_time = end_time - start_time
+    log_processing_statistics(connection, date, hour, "transactions.json.gz", len(transformed_transactions), processing_time)
+
 
     # Archive and delete the original files
     for dataset_type, dataset_path in dataset_paths.items():

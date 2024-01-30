@@ -21,17 +21,10 @@ INVALID_RECORDS_TABLE = 'data.invalid_products'
 
 
 # Helper functions
-# TODO quarantine invalid records
-# todo turn on schema enforcement
-# todo call processing statistics
-# TODO schema validation json
 # TODO handle missing fields and duplicate skus in transformations
-# TODO add orchestration / workflows for different arrivals
 # TODO add tests
 # TODO connect everything to minio
 # TODO log records in database for erasure requests and have single source of truth
-# TODO prevent duplicates from loading
-# todo forget minio and loading directly in container, use volume mounts instead
 
 
 connection_pool = SimpleConnectionPool(
@@ -58,11 +51,13 @@ def connect_to_postgres():
 
 
 def log_processing_statistics(connection, date, hour, dataset_type, record_count, processing_time):
+    actual_date = extract_actual_date(date)
+    actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
         cursor.execute("""
-            INSERT INTO data.processing_statistics (date, hour, dataset_type, record_count, processing_time) 
+            INSERT INTO data.processing_statistics (record_date, record_hour, dataset_type, record_count, processing_time) 
             VALUES (%s, %s, %s, %s, %s);
-        """, (date, hour, dataset_type, record_count, processing_time))
+        """, (actual_date, actual_hour, dataset_type, record_count, processing_time))
     connection.commit()
 
 
@@ -81,7 +76,7 @@ def log_invalid_product(connection, product, error_message, date, hour):
     actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
         cursor.execute("""
-            INSERT INTO data.invalid_products (date, hour, sku, name, price, category, popularity, error_message) 
+            INSERT INTO data.invalid_products (record_date, record_hour, sku, name, price, category, popularity, error_message) 
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
         """, (actual_date, actual_hour, product.get("sku"), product.get("name"), product.get("price"), product.get("category"), product.get("popularity"), error_message))
     connection.commit()
@@ -164,14 +159,14 @@ def log_processed_products(connection, date, hour, skus, names, prices, categori
             # Check if the record already exists
             cursor.execute("""
                 SELECT COUNT(*) FROM data.products
-                WHERE date = %s AND hour = %s AND sku = %s;
+                WHERE record_date = %s AND record_hour = %s AND sku = %s;
             """, (actual_date, actual_hour, sku))
 
             count = cursor.fetchone()[0]
             if count == 0:
                 # Record doesn't exist, insert it
                 cursor.execute("""
-                    INSERT INTO data.products (sku, name, price, category, popularity, date, hour)
+                    INSERT INTO data.products (sku, name, price, category, popularity, record_date, record_hour)
                     VALUES (%s, %s, %s, %s, %s, %s, %s);
                 """, (sku, name, price, category, popularity, actual_date, actual_hour))
             else:
@@ -198,6 +193,9 @@ def process_hourly_data(connection, date, hour, available_datasets):
                      for dataset in available_datasets}
     print("Dataset Paths:", dataset_paths)
 
+    # Record the start time
+    start_time = datetime.now()
+
     # Extract raw_data
     products_data = extract_data(dataset_paths.get("products.json.gz", ""))
     print("Number of products:", len(products_data))
@@ -215,6 +213,13 @@ def process_hourly_data(connection, date, hour, available_datasets):
     categories = [product["category"] for product in transformed_products]
     popularities = [product["popularity"] for product in transformed_products]
     log_processed_products(connection, date, hour, skus, names, prices, categories, popularities)
+
+    # Record the end time
+    end_time = datetime.now()
+
+    # Calculate processing time
+    processing_time = end_time - start_time
+    log_processing_statistics(connection, date, hour, "products.json.gz", len(transformed_products), processing_time)
 
     # Archive and delete the original files
     for dataset_type, dataset_path in dataset_paths.items():

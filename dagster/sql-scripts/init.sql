@@ -6,7 +6,7 @@ CREATE TABLE data.processing_statistics (
     record_hour INTEGER NOT NULL,
     dataset_type VARCHAR(255) NOT NULL,
     record_count INTEGER NOT NULL,
-    processing_time NUMERIC NOT NULL,
+    processing_time INTERVAL NOT NULL,
     processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
