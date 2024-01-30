@@ -21,6 +21,11 @@ def transactions_schedule(_context):
     return {}
 
 
+@schedule(cron_schedule="*/2 * * * *", job=products_job, execution_timezone="Europe/Zagreb", default_status=DefaultScheduleStatus.STOPPED)
+def products_schedule(_context):
+    return {}
+
+
 @repository
 def deploy_docker_repository():
-    return [customers_schedule, transactions_schedule, customers_job, products_job, transactions_job, erasure_requests_job]
+    return [customers_schedule, transactions_schedule, products_schedule, customers_job, products_job, transactions_job, erasure_requests_job]

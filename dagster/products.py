@@ -1,11 +1,13 @@
 from dagster import graph, op
+from products_etl import main
+
 
 @op
-def products_op():
-    pass
+def process_products_op():
+    main()
 
 
 @graph
 def products_graph():
-    products_op()
+    process_products_op()
 
