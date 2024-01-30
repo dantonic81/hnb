@@ -1,3 +1,4 @@
+import traceback
 import gzip
 import json
 import logging
@@ -16,9 +17,11 @@ logger = logging.getLogger(__name__)
 RAW_DATA_PATH = '/opt/dagster/app/raw_data'
 PROCESSED_DATA_PATH = '/opt/dagster/app/processed_data'
 ARCHIVED_DATA_PATH = '/opt/dagster/app/archived_data'
+INVALID_RECORDS_TABLE = 'data.invalid_products'
 
 
 # Helper functions
+# TODO quarantine invalid records
 # todo turn on schema enforcement
 # todo call processing statistics
 # TODO schema validation json
@@ -73,24 +76,43 @@ def extract_data(file_path):
     return data
 
 
-def transform_and_validate_products(products_data):
+def log_invalid_product(connection, product, error_message, date, hour):
+    actual_date = extract_actual_date(date)
+    actual_hour = extract_actual_hour(hour)
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO data.invalid_products (date, hour, sku, name, price, category, popularity, error_message) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+        """, (actual_date, actual_hour, product.get("sku"), product.get("name"), product.get("price"), product.get("category"), product.get("popularity"), error_message))
+    connection.commit()
+
+
+def transform_and_validate_products(connection, products_data, date, hour):
     # Load the JSON schema
     with open("products_schema.json", "r") as schema_file:
         schema = json.load(schema_file)
 
+    valid_products = []
+
     # Validate each product record against the schema
     for product in products_data:
         try:
+            # Convert 'price' to a number before validation
+            product['price'] = float(product['price'])
             validate(instance=product, schema=schema)
+            valid_products.append(product)
         except jsonschema.exceptions.ValidationError as e:
             # Log or handle validation errors
             print(f"Validation error for product: {e}")
+            # Log the invalid record to the database
+            log_invalid_product(connection, product, str(e), date, hour)
+            continue
 
     # Update last_change timestamp
-    for product in products_data:
+    for product in valid_products:
         product['last_change'] = datetime.utcnow().isoformat()
 
-    return products_data
+    return valid_products
 
 
 def load_data(data, dataset_type, date, hour):
@@ -181,7 +203,7 @@ def process_hourly_data(connection, date, hour, available_datasets):
     print("Number of products:", len(products_data))
 
     # Transform and validate raw_data
-    transformed_products = transform_and_validate_products(products_data)
+    transformed_products = transform_and_validate_products(connection, products_data, date, hour)
 
     # Load processed raw_data
     load_data(transformed_products, "products.json.gz", date, hour)
@@ -248,6 +270,7 @@ def main():
         process_all_data()
     except Exception as e:
         logger.error(f"An error occurred: {str(e)}")
+        traceback.print_exc()
 
 
 if __name__ == "__main__":

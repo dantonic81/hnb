@@ -37,3 +37,37 @@ CREATE TABLE IF NOT EXISTS data.products (
     hour INTEGER NOT NULL,
     processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS data.invalid_products (
+    id SERIAL PRIMARY KEY,
+    sku INTEGER NOT NULL,
+    name VARCHAR(255),
+    price DECIMAL(10, 2) NOT NULL,
+    category VARCHAR(255) NOT NULL,
+    popularity DECIMAL(5, 4) NOT NULL,
+    error_message TEXT,
+    date DATE NOT NULL,
+    hour INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS data.invalid_transactions (
+    id SERIAL PRIMARY KEY,
+    transaction_id UUID,
+    date DATE NOT NULL,
+    hour INTEGER NOT NULL,
+    customer_id INTEGER NOT NULL,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS data.invalid_customers (
+    id INTEGER PRIMARY KEY,
+    date DATE NOT NULL,
+    hour INTEGER NOT NULL,
+    first_name VARCHAR(255),
+    last_name VARCHAR(255),
+    email VARCHAR(255) UNIQUE,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

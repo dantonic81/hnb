@@ -1,3 +1,4 @@
+import traceback
 import gzip
 import json
 import logging
@@ -16,10 +17,13 @@ logger = logging.getLogger(__name__)
 RAW_DATA_PATH = '/opt/dagster/app/raw_data'
 PROCESSED_DATA_PATH = '/opt/dagster/app/processed_data'
 ARCHIVED_DATA_PATH = '/opt/dagster/app/archived_data'
+INVALID_RECORDS_TABLE = 'data.invalid_transactions'
+
 
 
 
 # Helper functions
+# TODO quarantine invalid records
 # todo turn on schema enforcement
 # todo call processing statistics
 # TODO schema validation json
@@ -53,6 +57,17 @@ def release_connection(conn):
 
 def connect_to_postgres():
     return get_connection()
+
+
+def log_invalid_transaction(connection, transaction, error_message, date, hour):
+    actual_date = extract_actual_date(date)
+    actual_hour = extract_actual_hour(hour)
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO data.invalid_transactions (date, hour, transaction_id, customer_id, error_message) 
+            VALUES (%s, %s, %s, %s, %s);
+        """, (actual_date, actual_hour, transaction.get("transaction_id"), transaction.get("customer_id"), error_message))
+    connection.commit()
 
 
 def log_processing_statistics(connection, date, hour, dataset_type, record_count, processing_time):
@@ -118,24 +133,29 @@ def archive_and_delete(file_path, dataset_type, date, hour, archive_path):
     logger.debug(f"File archived: {archive_file_path}")
 
 
-def transform_and_validate_transactions(transactions_data):
+def transform_and_validate_transactions(connection, transactions_data, date, hour):
     # Load the JSON schema
     with open("transactions_schema.json", "r") as schema_file:
         schema = json.load(schema_file)
+
+    valid_transactions = []
 
     # Validate each transaction record against the schema
     for transaction in transactions_data:
         try:
             validate(instance=transaction, schema=schema)
+            valid_transactions.append(transaction)
         except jsonschema.exceptions.ValidationError as e:
             # Log or handle validation errors
             print(f"Validation error for transaction: {e}")
+            log_invalid_transaction(connection, transaction, str(e), date, hour)
+            continue
 
     # Update last_change timestamp
-    for transaction in transactions_data:
+    for transaction in valid_transactions:
         transaction['last_change'] = datetime.utcnow().isoformat()
 
-    return transactions_data
+    return valid_transactions
 
 
 def extract_actual_date(date_str):
@@ -182,7 +202,7 @@ def process_hourly_data(connection, date, hour, available_datasets):
     print("Number of transactions:", len(transactions_data))
 
     # Transform and validate raw_data
-    transformed_transactions = transform_and_validate_transactions(transactions_data)
+    transformed_transactions = transform_and_validate_transactions(connection, transactions_data, date, hour)
 
     # Load processed raw_data
     load_data(transformed_transactions, "transactions.json.gz", date, hour)
@@ -246,6 +266,7 @@ def main():
         process_all_data()
     except Exception as e:
         logger.error(f"An error occurred: {str(e)}")
+        traceback.print_exc()
 
 
 if __name__ == "__main__":

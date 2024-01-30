@@ -1,3 +1,4 @@
+import traceback
 import gzip
 import json
 import logging
@@ -18,6 +19,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RAW_DATA_PATH = '/opt/dagster/app/raw_data'
 PROCESSED_DATA_PATH = '/opt/dagster/app/processed_data'
 ARCHIVED_DATA_PATH = '/opt/dagster/app/archived_data'
+INVALID_RECORDS_TABLE = 'data.invalid_customers'
 
 
 connection_pool = SimpleConnectionPool(
@@ -31,6 +33,7 @@ connection_pool = SimpleConnectionPool(
 )
 
 # Helper functions
+# TODO quarantine invalid records
 # todo turn on schema enforcement
 # todo call processing statistics
 # TODO schema validation json
@@ -55,6 +58,17 @@ def connect_to_postgres():
     return get_connection()
 
 
+def log_invalid_customer(connection, customer, error_message, date, hour):
+    actual_date = extract_actual_date(date)
+    actual_hour = extract_actual_hour(hour)
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO data.invalid_customers (date, hour, id, first_name, last_name, email, error_message) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s);
+        """, (actual_date, actual_hour, customer.get("id"), customer.get("first_name"), customer.get("last_name"), customer.get("email"), error_message))
+    connection.commit()
+
+
 def extract_data(file_path):
     if not file_path:
         return []
@@ -74,24 +88,29 @@ def log_processing_statistics(connection, date, hour, dataset_type, record_count
     connection.commit()
 
 
-def transform_and_validate_customers(customers_data):
+def transform_and_validate_customers(connection, customers_data, date, hour):
     # Load the JSON schema
     with open("customer_schema.json", "r") as schema_file:
         schema = json.load(schema_file)
+
+    valid_customers = []
 
     # Validate each customer record against the schema
     for customer in customers_data:
         try:
             validate(instance=customer, schema=schema)
+            valid_customers.append(customer)
         except jsonschema.exceptions.ValidationError as e:
             # Log or handle validation errors
             print(f"Validation error for customer: {e}")
+            log_invalid_customer(connection, customer, str(e), date, hour)
+            continue
 
     # Update last_change timestamp
-    for customer in customers_data:
+    for customer in valid_customers:
         customer['last_change'] = datetime.utcnow().isoformat()
 
-    return customers_data
+    return valid_customers
 
 
 def extract_actual_date(date_str):
@@ -182,7 +201,7 @@ def process_hourly_data(connection, date, hour, available_datasets):
     print("Number of customers:", len(customers_data))
 
     # Transform and validate raw_data
-    transformed_customers = transform_and_validate_customers(customers_data)
+    transformed_customers = transform_and_validate_customers(connection, customers_data, date, hour)
 
     # Load processed raw_data
     load_data(transformed_customers, "customers.json.gz", date, hour)
@@ -245,6 +264,7 @@ def main():
         process_all_data()
     except Exception as e:
         logger.error(f"An error occurred: {str(e)}")
+        traceback.print_exc()
 
 
 if __name__ == "__main__":

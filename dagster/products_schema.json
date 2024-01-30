@@ -10,15 +10,15 @@
       "type": "string"
     },
     "price": {
-      "type": "string",
-      "pattern": "^\\d+(\\.\\d{1,2})?$"
+      "type": "number",
+      "exclusiveMinimum": 0
     },
     "category": {
       "type": "string"
     },
     "popularity": {
       "type": "number",
-      "minimum": 0
+      "exclusiveMinimum": 0
     }
   },
   "required": ["sku", "name", "price", "category", "popularity"],
