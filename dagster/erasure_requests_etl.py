@@ -126,8 +126,8 @@ def process_erasure_requests(connection, erasure_requests):
                     # Step 3: Anonymize and update the data
                     anonymize_and_update_data(file_path, customer_id, erasure_request)
 
-                    # # Step 4: Archive the updated file
-                    # archive_updated_file(file_path, date, hour)
+                    # Step 4: Archive the updated file
+                    archive_updated_file(file_path, date, hour)
 
 
 def extract_actual_date(date_str):
@@ -309,10 +309,10 @@ def process_hourly_data(connection, date, hour, available_datasets):
     log_processing_statistics(connection, date, hour, "erasure_requests.json.gz", len(erasure_requests_data), processing_time)
 
     # Archive and delete the original files
-    # for dataset_type, dataset_path in dataset_paths.items():
-    #     print("Processing dataset:", dataset_type, "Path:", dataset_path)
-    #     archive_and_delete(dataset_path, dataset_type, date, hour, ARCHIVED_DATA_PATH)
-    # logger.debug("Processing completed.")
+    for dataset_type, dataset_path in dataset_paths.items():
+        print("Processing dataset:", dataset_type, "Path:", dataset_path)
+        archive_and_delete(dataset_path, dataset_type, date, hour, ARCHIVED_DATA_PATH)
+    logger.debug("Processing completed.")
 
 
 def cleanup_empty_directories(directory):
