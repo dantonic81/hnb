@@ -89,7 +89,6 @@ def extract_data(file_path):
     _, file_extension = os.path.splitext(file_path)
 
     if file_extension == '.gz':
-        print(f"FILE_PATH = {file_path}")
         # Extract raw_data from a gzipped JSON file
         with gzip.open(file_path, "rt") as file:
             data = [json.loads(line) for line in file]
@@ -98,14 +97,14 @@ def extract_data(file_path):
         with open(file_path, "r", encoding="utf-8") as file:
             data = [json.load(file)]
     else:
-        print(f"Unsupported file format: {file_extension}")
+        logger.warning(f"Unsupported file format: {file_extension}")
         return []
 
     return data
 
 
 def load_data(data, dataset_type, date, hour, processed_data_path):
-    logger.info(f"Loading data {data} for {dataset_type} {date} {hour}")
+    logger.debug(f"Loading data {data} for {dataset_type} {date} {hour}")
     # Create the corresponding subdirectories in processed_data
     output_dir = os.path.join(processed_data_path, date, hour)
     os.makedirs(output_dir, exist_ok=True)

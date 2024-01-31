@@ -28,17 +28,6 @@ with open(TRANSACTIONS_SCHEMA_FILE, "r") as schema_file:
     TRANSACTIONS_SCHEMA = json.load(schema_file)
 
 
-def log_invalid_transaction(connection, transaction, error_message, date, hour):
-    actual_date = extract_actual_date(date)
-    actual_hour = extract_actual_hour(hour)
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            INSERT INTO data.invalid_transactions (record_date, record_hour, transaction_id, customer_id, error_message) 
-            VALUES (%s, %s, %s, %s, %s);
-        """, (actual_date, actual_hour, transaction.get("transaction_id"), transaction.get("customer_id"), error_message))
-    connection.commit()
-
-
 def is_existing_customer(connection, customer_id):
     with connection.cursor() as cursor:
         # Check if the customer_id exists in the customer dataset
@@ -80,10 +69,21 @@ def is_valid_total_cost(products, total_cost):
     return round(calculated_total_cost, 2) == round(float(total_cost), 2)
 
 
+def bulk_insert_invalid_transactions(connection, invalid_transactions):
+    with connection.cursor() as cursor:
+        cursor.executemany("""
+            INSERT INTO data.invalid_transactions (record_date, record_hour, transaction_id, customer_id, error_message) 
+            VALUES (%s, %s, %s, %s, %s);
+        """, [(extract_actual_date(date), extract_actual_hour(hour), t.get("transaction_id"), t.get("customer_id"), error_message)
+              for t, error_message, date, hour in invalid_transactions])
+    connection.commit()
+
+
 def transform_and_validate_transactions(connection, transactions_data, date, hour):
     schema = TRANSACTIONS_SCHEMA
 
     valid_transactions = []
+    invalid_transactions = []
     unique_transaction_ids = set()
 
     # Validate each transaction record against the schema
@@ -96,7 +96,7 @@ def transform_and_validate_transactions(connection, transactions_data, date, hou
             if transaction_id in unique_transaction_ids:
                 # Log or handle duplicate transaction_id
                 logger.debug(f"Duplicate transaction_id found: {transaction_id}")
-                log_invalid_transaction(connection, transaction, "Duplicate transaction_id", date, hour)
+                invalid_transactions.append((transaction, "Duplicate transaction_id", date, hour))
                 continue
 
             unique_transaction_ids.add(transaction_id)
@@ -106,14 +106,14 @@ def transform_and_validate_transactions(connection, transactions_data, date, hou
             if not is_existing_customer(connection, customer_id):
                 # Log or handle invalid customer_id
                 logger.debug(f"Invalid customer_id found: {customer_id}")
-                log_invalid_transaction(connection, transaction, f"Invalid customer_id: {customer_id}", date, hour)
+                invalid_transactions.append((transaction, f"Invalid customer_id: {customer_id}", date, hour))
                 continue
 
             # Check if product skus correspond to existing products
             if not are_valid_product_skus(connection, transaction.get('purchases', {}).get('products', [])):
                 # Log or handle invalid product skus
                 logger.debug(f"Invalid product skus found in transaction_id: {transaction_id}")
-                log_invalid_transaction(connection, transaction, f"Invalid product skus", date, hour)
+                invalid_transactions.append((transaction, "Invalid product skus", date, hour))
                 continue
 
             # Check if total_cost matches the sum of individual product costs
@@ -121,7 +121,7 @@ def transform_and_validate_transactions(connection, transactions_data, date, hou
             if not is_valid_total_cost(purchases.get('products', []), purchases.get('total_cost')):
                 # Log or handle invalid total_cost
                 logger.debug(f"Invalid total_cost found in transaction_id: {transaction_id}")
-                log_invalid_transaction(connection, transaction, f"Invalid total_cost", date, hour)
+                invalid_transactions.append((transaction, "Invalid total_cost", date, hour))
                 continue
 
             valid_transactions.append(transaction)
@@ -129,8 +129,11 @@ def transform_and_validate_transactions(connection, transactions_data, date, hou
         except jsonschema.exceptions.ValidationError as e:
             # Log or handle validation errors
             logger.error(f"Validation error for transaction: {e}")
-            log_invalid_transaction(connection, transaction, str(e), date, hour)
+            invalid_transactions.append((transaction, str(e), date, hour))
             continue
+
+    # Bulk insert invalid transactions
+    bulk_insert_invalid_transactions(connection, invalid_transactions)
 
     return valid_transactions
 
