@@ -26,8 +26,7 @@ services:
 
   docker_example_user_code:
     build:
-      context: .
-      dockerfile: ./Dockerfile_user_code
+      dockerfile: Dockerfile_user_code
     container_name: docker_example_user_code
     image: docker_example_user_code_image
     restart: always
@@ -46,8 +45,7 @@ services:
 
   docker_example_webserver:
     build:
-      context: .
-      dockerfile: ./Dockerfile_dagster
+      dockerfile: Dockerfile_dagster
     entrypoint:
       - dagster-webserver
       - -h
@@ -81,8 +79,7 @@ services:
 
   docker_example_daemon:
     build:
-      context: .
-      dockerfile: ./Dockerfile_dagster
+      dockerfile: Dockerfile_dagster
     entrypoint:
       - dagster-daemon
       - run
