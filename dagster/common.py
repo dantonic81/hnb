@@ -102,3 +102,35 @@ def extract_data(file_path):
         return []
 
     return data
+
+
+def load_data(data, dataset_type, date, hour, processed_data_path):
+    logger.info(f"Loading data {data} for {dataset_type} {date} {hour}")
+    # Create the corresponding subdirectories in processed_data
+    output_dir = os.path.join(processed_data_path, date, hour)
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Determine the appropriate file extension based on dataset_type
+    if dataset_type.endswith(".json.gz"):
+        file_extension = ".json.gz"
+    elif dataset_type.endswith(".json"):
+        file_extension = ".json"
+    else:
+        raise ValueError(f"Unsupported file extension in dataset_type: {dataset_type}")
+
+    # Remove the existing extension if present
+    dataset_type_without_extension, _ = dataset_type.split(".", 1)
+
+    # Load processed data to the new location only if the dataset is not empty
+    if data:
+        # Use gzip compression if the file extension is .json.gz
+        open_func = gzip.open if file_extension == ".json.gz" else open
+        # Construct the output path
+        output_path = os.path.join(str(output_dir), f"{dataset_type_without_extension}{file_extension}")
+
+        with open_func(output_path, "wt") as file:
+            for record in data:
+                json.dump(record, file)
+                file.write("\n")
+    else:
+        logger.debug(f"Skipping loading for empty dataset: {dataset_type}")

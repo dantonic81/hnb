@@ -1,5 +1,5 @@
 from dagster import graph, op
-from customer_etl import main
+from customers_etl import main
 
 
 @op

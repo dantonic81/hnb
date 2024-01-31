@@ -13,7 +13,7 @@ WORKDIR /opt/dagster/app
 
 COPY .env /opt/dagster/app
 COPY requirements.txt /opt/dagster/app
-COPY customer_etl.py transactions_etl.py products_etl.py erasure_requests_etl.py common.py /opt/dagster/app/
+COPY customers_etl.py transactions_etl.py products_etl.py erasure_requests_etl.py common.py /opt/dagster/app/
 COPY customer_schema.json transactions_schema.json products_schema.json erasure_requests_schema.json /opt/dagster/app/
 
 # Install any needed packages specified in requirements.txt
