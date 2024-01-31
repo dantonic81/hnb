@@ -3,7 +3,6 @@
 # Exclude sensitive files
 .env.example
 tests/
-.conftest
 README.md
 __pycache__
 .git
@@ -13,3 +12,4 @@ __pycache__
 .idea
 .venv
 .pytest_cache
+conftest.py
