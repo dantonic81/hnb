@@ -22,6 +22,10 @@ INVALID_RECORDS_TABLE = 'data.invalid_products'
 PRODUCTS_SCHEMA_FILE = "products_schema.json"
 
 
+with open(PRODUCTS_SCHEMA_FILE, "r") as schema_file:
+    PRODUCTS_SCHEMA = json.load(schema_file)
+
+
 def log_invalid_product(connection, product, error_message, date, hour):
     actual_date = extract_actual_date(date)
     actual_hour = extract_actual_hour(hour)
@@ -35,8 +39,7 @@ def log_invalid_product(connection, product, error_message, date, hour):
 
 def transform_and_validate_products(connection, products_data, date, hour):
     # Load the JSON schema
-    with open("products_schema.json", "r") as schema_file:
-        schema = json.load(schema_file)
+    schema = PRODUCTS_SCHEMA
 
     valid_products = []
 

@@ -25,6 +25,10 @@ INVALID_RECORDS_TABLE = 'data.invalid_customers'
 ERASURE_REQUESTS_SCHEMA_FILE = "erasure_requests_schema.json"
 
 
+with open(ERASURE_REQUESTS_SCHEMA_FILE, "r") as schema_file:
+    ERASURE_REQUESTS_SCHEMA = json.load(schema_file)
+
+
 # Query the customers table to get date and hour for a given customer_id
 def get_date_and_hour_to_anonymize(connection, customer_id):
     with connection.cursor() as cursor:
@@ -141,8 +145,7 @@ def log_invalid_erasure_request(connection, erasure_request, error_message, date
 
 
 def transform_and_validate_erasure_requests(connection, erasure_requests_data, date, hour):
-    with open(ERASURE_REQUESTS_SCHEMA_FILE, "r") as schema_file:
-        schema = json.load(schema_file)
+    schema = ERASURE_REQUESTS_SCHEMA
 
     valid_erasure_requests = []
 

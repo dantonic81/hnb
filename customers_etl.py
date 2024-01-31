@@ -24,6 +24,11 @@ INVALID_RECORDS_TABLE = 'data.invalid_customers'
 CUSTOMERS_SCHEMA_FILE = "customer_schema.json"
 
 
+# Load the JSON schema once and store it in a variable
+with open(CUSTOMERS_SCHEMA_FILE, "r") as schema_file:
+    CUSTOMERS_SCHEMA = json.load(schema_file)
+
+
 def log_invalid_customer(connection, customer, error_message, date, hour):
     actual_date = extract_actual_date(date)
     actual_hour = extract_actual_hour(hour)
@@ -52,8 +57,7 @@ def log_invalid_customer(connection, customer, error_message, date, hour):
 
 def transform_and_validate_customers(connection, customers_data, date, hour):
     # Load the JSON schema
-    with open(CUSTOMERS_SCHEMA_FILE, "r") as schema_file:
-        schema = json.load(schema_file)
+    schema = CUSTOMERS_SCHEMA
 
     valid_customers = []
 
