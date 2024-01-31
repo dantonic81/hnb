@@ -9,6 +9,7 @@ import jsonschema
 from jsonschema import validate
 from common import connect_to_postgres, cleanup_empty_directories, archive_and_delete, extract_actual_date, extract_actual_hour, log_processing_statistics, extract_data
 import psycopg2
+from typing import Any, Optional, Tuple, List, Dict
 
 load_dotenv()
 
@@ -29,7 +30,17 @@ with open(ERASURE_REQUESTS_SCHEMA_FILE, "r") as schema_file:
 
 
 # Query the customers table to get date and hour for a given customer_id
-def get_date_and_hour_to_anonymize(connection, customer_id):
+def get_date_and_hour_to_anonymize(connection: Any, customer_id: str) -> Optional[Tuple[datetime, int]]:
+    """
+    Query the customers table to get date and hour for a given customer_id.
+
+    Args:
+        connection (Any): The PostgreSQL connection.
+        customer_id (str): The customer ID.
+
+    Returns:
+        Optional[Tuple[datetime, int]]: A tuple containing date and hour if the customer is found, else None.
+    """
     with connection.cursor() as cursor:
         cursor.execute("""
             SELECT record_date, record_hour FROM data.customers
@@ -41,8 +52,17 @@ def get_date_and_hour_to_anonymize(connection, customer_id):
     return None
 
 
-# Locate the processed data file based on date and hour
-def locate_processed_data_file(date, hour):
+def locate_processed_data_file(date: datetime, hour: int) -> Optional[str]:
+    """
+    Locate the processed data file based on date and hour.
+
+    Args:
+        date (datetime): The date of the data.
+        hour (int): The hour of the data.
+
+    Returns:
+        Optional[str]: The path to the processed data file if found, else None.
+    """
     formatted_date = format_date_for_file_system(date)
     formatted_hour = format_hour_for_file_system(hour)
     processed_data_path = os.path.join(PROCESSED_DATA_PATH, str(formatted_date), str(formatted_hour))
@@ -53,7 +73,15 @@ def locate_processed_data_file(date, hour):
 
 
 # Anonymize and update the data in the processed data file
-def anonymize_and_update_data(file_path, customer_id, erasure_request):
+def anonymize_and_update_data(file_path: str, customer_id: str, erasure_request: Dict[str, Any]) -> None:
+    """
+    Anonymize and update the data in the processed data file.
+
+    Args:
+        file_path (str): The path to the processed data file.
+        customer_id (str): The customer ID.
+        erasure_request (Dict[str, Any]): The erasure request data.
+    """
     email_to_anonymize = erasure_request.get("email")
     anonymized_email = hashlib.sha256(email_to_anonymize.encode()).hexdigest()
     logger.debug(f"email: {email_to_anonymize}, anonymized_email: {anonymized_email}")
@@ -72,12 +100,19 @@ def anonymize_and_update_data(file_path, customer_id, erasure_request):
             for record in data:
                 json.dump(record, file)
                 file.write("\n")
-    except Exception as e:
+    except Exception:
         logger.exception(f"An error occurred while updating file {file_path}")
 
 
-# Archive the updated file
-def archive_updated_file(file_path, date, hour):
+def archive_updated_file(file_path: str, date: datetime, hour: int) -> None:
+    """
+    Archive the updated file.
+
+    Args:
+        file_path (str): The path to the file to be archived.
+        date (str): The date of the data.
+        hour (str): The hour of the data.
+    """
     archive_path = os.path.join(ARCHIVED_DATA_PATH, str(date), str(hour))
     os.makedirs(archive_path, exist_ok=True)
 
@@ -88,7 +123,14 @@ def archive_updated_file(file_path, date, hour):
     logger.info(f"File archived: {archive_file_path}")
 
 
-def process_erasure_requests(connection, erasure_requests):
+def process_erasure_requests(connection: Any, erasure_requests: List[Dict[str, Any]]) -> None:
+    """
+    Process erasure requests by anonymizing and updating customer data.
+
+    Args:
+        connection (Any): The PostgreSQL connection.
+        erasure_requests (List[Dict[str, Any]]): List of erasure requests.
+    """
     for erasure_request in erasure_requests:
         customer_id = erasure_request.get("customer-id")
         if customer_id:
@@ -107,15 +149,43 @@ def process_erasure_requests(connection, erasure_requests):
                     archive_updated_file(file_path, date, hour)
 
 
-def format_date_for_file_system(actual_date):
+def format_date_for_file_system(actual_date: datetime) -> str:
+    """
+    Format the date for the file system.
+
+    Args:
+        actual_date (datetime): The actual date.
+
+    Returns:
+        str: Formatted date string.
+    """
     return f"date={actual_date.strftime('%Y-%m-%d')}"
 
 
-def format_hour_for_file_system(actual_hour):
+def format_hour_for_file_system(actual_hour: int) -> str:
+    """
+    Format the hour for the file system.
+
+    Args:
+        actual_hour (int): The actual hour.
+
+    Returns:
+        str: Formatted hour string.
+    """
     return f"hour={actual_hour:02}"
 
 
-def log_invalid_erasure_request(connection, erasure_request, error_message, date, hour):
+def log_invalid_erasure_request(connection: Any, erasure_request: Dict[str, Any], error_message: str, date: str, hour: str) -> None:
+    """
+    Log invalid erasure requests into the database.
+
+    Args:
+        connection (Any): The PostgreSQL connection.
+        erasure_request (Dict[str, Any]): The invalid erasure request data.
+        error_message (str): The error message describing the validation error.
+        date (str): The date of the data.
+        hour (str): The hour of the data.
+    """
     actual_date = extract_actual_date(date)
     actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
@@ -142,7 +212,19 @@ def log_invalid_erasure_request(connection, erasure_request, error_message, date
     connection.commit()
 
 
-def transform_and_validate_erasure_requests(connection, erasure_requests_data, date, hour):
+def transform_and_validate_erasure_requests(connection: Any, erasure_requests_data: List[Dict[str, Any]], date: str, hour: str) -> List[Dict[str, Any]]:
+    """
+    Transform and validate erasure requests against the schema.
+
+    Args:
+        connection (Any): The PostgreSQL connection.
+        erasure_requests_data (List[Dict[str, Any]]): List of erasure requests data.
+        date (str): The date of the data.
+        hour (str): The hour of the data.
+
+    Returns:
+        List[Dict[str, Any]]: List of valid erasure requests.
+    """
     schema = ERASURE_REQUESTS_SCHEMA
 
     valid_erasure_requests = []
@@ -177,7 +259,17 @@ def transform_and_validate_erasure_requests(connection, erasure_requests_data, d
     return valid_erasure_requests
 
 
-def log_processed_erasure_requests(connection, date, hour, customer_ids, emails):
+def log_processed_erasure_requests(connection: Any, date: str, hour: str, customer_ids: List[str], emails: List[str]) -> None:
+    """
+    Log processed erasure requests into the database.
+
+    Args:
+        connection (Any): The PostgreSQL connection.
+        date (str): The date of the data.
+        hour (str): The hour of the data.
+        customer_ids (List[str]): List of customer IDs.
+        emails (List[str]): List of emails.
+    """
     actual_date = extract_actual_date(date)
     actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
@@ -201,7 +293,16 @@ def log_processed_erasure_requests(connection, date, hour, customer_ids, emails)
     connection.commit()
 
 
-def process_hourly_data(connection, date, hour, available_datasets):
+def process_hourly_data(connection: Any, date: str, hour: str, available_datasets: List[str]) -> None:
+    """
+    Process erasure requests for a given hour.
+
+    Args:
+        connection (Any): The PostgreSQL connection.
+        date (str): The date of the data.
+        hour (str): The hour of the data.
+        available_datasets (List[str]): List of available datasets for the given hour.
+    """
     dataset_paths = {dataset: os.path.join(RAW_DATA_PATH, f"{date}", f"{hour}", f"{dataset}")
                      for dataset in available_datasets}
     logger.debug("Dataset Paths:", dataset_paths)
@@ -235,7 +336,13 @@ def process_hourly_data(connection, date, hour, available_datasets):
     logger.debug("Processing completed.")
 
 
-def process_all_data(connection):
+def process_all_data(connection: Any) -> None:
+    """
+    Process all available erasure requests data.
+
+    Args:
+        connection (Any): The PostgreSQL connection.
+    """
     # Get a sorted list of date folders
     try:
         date_folders = os.listdir(RAW_DATA_PATH)
@@ -262,17 +369,20 @@ def process_all_data(connection):
         # Clean up empty directories in raw_data after processing
         cleanup_empty_directories(RAW_DATA_PATH)
 
-    except (psycopg2.Error, Exception) as e:
+    except (psycopg2.Error, Exception):
         logger.exception(f"An error occurred while processing data")
 
 
-def main():
+def main() -> None:
+    """
+    Main function to run the erasure requests processing pipeline.
+    """
     try:
         with connect_to_postgres() as connection:
             process_all_data(connection)
-    except psycopg2.Error as e:
+    except psycopg2.Error:
         logger.exception(f"An error occurred while processing data")
-    except Exception as e:
+    except Exception:
         logger.exception(f"An error occurred")
 
 

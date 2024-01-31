@@ -8,6 +8,7 @@ from jsonschema import validate
 from common import load_data, archive_and_delete, extract_actual_date, extract_actual_hour, connect_to_postgres, extract_data, log_processing_statistics, cleanup_empty_directories
 import psycopg2
 import cProfile
+from typing import Any, List, Dict, Tuple
 
 
 load_dotenv()
@@ -27,7 +28,17 @@ with open(TRANSACTIONS_SCHEMA_FILE, "r") as schema_file:
     TRANSACTIONS_SCHEMA = json.load(schema_file)
 
 
-def is_existing_customer(connection, customer_id):
+def is_existing_customer(connection: Any, customer_id: str) -> bool:
+    """
+    Check if the customer with the given ID exists in the customer dataset.
+
+    Args:
+        connection (Any): The PostgreSQL connection.
+        customer_id (str): The customer ID.
+
+    Returns:
+        bool: True if the customer exists, False otherwise.
+    """
     with connection.cursor() as cursor:
         # Check if the customer_id exists in the customer dataset
         cursor.execute("""
@@ -40,7 +51,17 @@ def is_existing_customer(connection, customer_id):
     return count > 0
 
 
-def is_existing_product(connection, sku):
+def is_existing_product(connection: Any, sku: str) -> bool:
+    """
+    Check if the product with the given SKU exists in the product dataset.
+
+    Args:
+        connection (Any): The PostgreSQL connection.
+        sku (str): The product SKU.
+
+    Returns:
+        bool: True if the product exists, False otherwise.
+    """
     with connection.cursor() as cursor:
         # Check if the sku exists in the product dataset
         cursor.execute("""
@@ -53,7 +74,17 @@ def is_existing_product(connection, sku):
     return count > 0
 
 
-def are_valid_product_skus(connection, products):
+def are_valid_product_skus(connection: Any, products: List[Dict[str, Any]]) -> bool:
+    """
+    Check if the product SKUs in the list exist in the product dataset.
+
+    Args:
+        connection (Any): The PostgreSQL connection.
+        products (List[Dict[str, Any]]): List of products with 'sku' key.
+
+    Returns:
+        bool: True if all product SKUs are valid, False otherwise.
+    """
     for product in products:
         sku = product.get('sku')
         if not is_existing_product(connection, sku):
@@ -61,14 +92,29 @@ def are_valid_product_skus(connection, products):
     return True
 
 
-def is_valid_total_cost(products, total_cost):
-    # Calculate the total cost based on individual product prices and quantities
+def is_valid_total_cost(products: List[Dict[str, Any]], total_cost: str) -> bool:
+    """
+    Check if the total cost matches the sum of individual product costs.
+
+    Args:
+        products (List[Dict[str, Any]]): List of products with 'price' and 'quantity' keys.
+        total_cost (str): The provided total cost.
+
+    Returns:
+        bool: True if the total cost is valid, False otherwise.
+    """
     calculated_total_cost = sum(float(product.get('price', 0)) * float(product.get('quanitity', 0)) for product in products)
-    # Compare the calculated total cost with the provided total_cost
     return round(calculated_total_cost, 2) == round(float(total_cost), 2)
 
 
-def bulk_insert_invalid_transactions(connection, invalid_transactions):
+def bulk_insert_invalid_transactions(connection: Any, invalid_transactions: List[Tuple[Dict[str, Any], str, str, str]]) -> None:
+    """
+    Bulk insert invalid transactions into the database.
+
+    Args:
+        connection (Any): The PostgreSQL connection.
+        invalid_transactions (List[Tuple[Dict[str, Any], str, str, str]]): List of tuples containing invalid transaction details.
+    """
     with connection.cursor() as cursor:
         cursor.executemany("""
             INSERT INTO data.invalid_transactions (record_date, record_hour, transaction_id, customer_id, error_message) 
@@ -78,7 +124,19 @@ def bulk_insert_invalid_transactions(connection, invalid_transactions):
     connection.commit()
 
 
-def transform_and_validate_transactions(connection, transactions_data, date, hour):
+def transform_and_validate_transactions(connection: Any, transactions_data: List[Dict[str, Any]], date: str, hour: str) -> List[Dict[str, Any]]:
+    """
+    Transform and validate transactions data.
+
+    Args:
+        connection (Any): The PostgreSQL connection.
+        transactions_data (List[Dict[str, Any]]): List of transaction records.
+        date (str): The date of the transactions.
+        hour (str): The hour of the transactions.
+
+    Returns:
+        List[Dict[str, Any]]: List of valid transactions.
+    """
     schema = TRANSACTIONS_SCHEMA
 
     valid_transactions = []
@@ -137,7 +195,16 @@ def transform_and_validate_transactions(connection, transactions_data, date, hou
     return valid_transactions
 
 
-def log_processed_transactions(connection, date, hour, transactions):
+def log_processed_transactions(connection: Any, date: str, hour: str, transactions: List[Dict[str, Any]]) -> None:
+    """
+    Log processed transactions to the database.
+
+    Args:
+        connection (Any): The PostgreSQL connection.
+        date (str): The date of the transactions.
+        hour (str): The hour of the transactions.
+        transactions (List[Dict[str, Any]]): List of processed transactions.
+    """
     with connection.cursor() as cursor:
         for transaction in transactions:
             transaction_id = transaction.get('transaction_id')
@@ -183,7 +250,6 @@ def log_processed_transactions(connection, date, hour, transactions):
 
             # Insert purchases data
             purchases = transaction.get('purchases', {}).get('products', [])
-            total_cost = transaction.get('purchases', {}).get('total_cost')
             for purchase in purchases:
                 cursor.execute("""
                     INSERT INTO data.purchases (transaction_id, product_sku, quantity, price, total)
@@ -200,7 +266,16 @@ def log_processed_transactions(connection, date, hour, transactions):
     logger.debug(f"Data loaded successfully for transactions ({date}/{hour}).")
 
 
-def process_hourly_data(connection, date, hour, available_datasets):
+def process_hourly_data(connection: Any, date: str, hour: str, available_datasets: List[str]) -> None:
+    """
+    Process hourly data for the specified date and hour.
+
+    Args:
+        connection (Any): The PostgreSQL connection.
+        date (str): The date of the hourly data.
+        hour (str): The hour of the hourly data.
+        available_datasets (List[str]): List of available datasets for the given hour.
+    """
     dataset_paths = {dataset: os.path.join(RAW_DATA_PATH, f"{date}", f"{hour}", f"{dataset}")
                      for dataset in available_datasets}
     logger.debug("Dataset Paths:", dataset_paths)
@@ -233,7 +308,13 @@ def process_hourly_data(connection, date, hour, available_datasets):
     logger.debug("Processing completed.")
 
 
-def process_all_data(connection):
+def process_all_data(connection: Any) -> None:
+    """
+    Process all available raw_data.
+
+    Args:
+        connection (Any): The PostgreSQL connection.
+    """
     # Get a sorted list of date folders
     try:
         date_folders = os.listdir(RAW_DATA_PATH)
@@ -260,17 +341,20 @@ def process_all_data(connection):
         # Clean up empty directories in raw_data after processing
         cleanup_empty_directories(RAW_DATA_PATH)
 
-    except (psycopg2.Error, Exception) as e:
+    except (psycopg2.Error, Exception):
         logger.exception(f"An error occurred while processing data")
 
 
-def main():
+def main() -> None:
+    """
+    Main function to run the data processing pipeline.
+    """
     try:
         with connect_to_postgres() as connection:
             process_all_data(connection)
-    except psycopg2.Error as e:
+    except psycopg2.Error:
         logger.exception(f"An error occurred while processing data")
-    except Exception as e:
+    except Exception:
         logger.exception(f"An error occurred")
 
 
