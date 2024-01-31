@@ -18,26 +18,22 @@ RAW_DATA_PATH = '/opt/dagster/app/raw_data'
 PROCESSED_DATA_PATH = '/opt/dagster/app/processed_data'
 ARCHIVED_DATA_PATH = '/opt/dagster/app/archived_data'
 INVALID_RECORDS_TABLE = 'data.invalid_transactions'
+TRANSACTIONS_SCHEMA_FILE = "transactions_schema.json"
 
 
+def create_connection_pool():
+    return SimpleConnectionPool(
+        minconn=1,
+        maxconn=10,
+        dbname=os.getenv("POSTGRES_DB"),
+        user=os.getenv("POSTGRES_USER"),
+        password=os.getenv("POSTGRES_PASSWORD"),
+        host=os.getenv("DB_HOST"),
+        port=os.getenv("DB_PORT"),
+    )
 
 
-# Helper functions
-# TODO handle missing fields and duplicate skus in transformations
-# TODO add tests
-# TODO connect everything to minio
-# TODO log records in database for erasure requests and have single source of truth
-
-
-connection_pool = SimpleConnectionPool(
-    minconn=1,
-    maxconn=10,
-    dbname=os.getenv("POSTGRES_DB"),
-    user=os.getenv("POSTGRES_USER"),
-    password=os.getenv("POSTGRES_PASSWORD"),
-    host=os.getenv("DB_HOST"),
-    port=os.getenv("DB_PORT"),
-)
+connection_pool = create_connection_pool()
 
 
 def get_connection():
@@ -172,7 +168,7 @@ def is_valid_total_cost(products, total_cost):
 
 def transform_and_validate_transactions(connection, transactions_data, date, hour):
     # Load the JSON schema
-    with open("transactions_schema.json", "r") as schema_file:
+    with open(TRANSACTIONS_SCHEMA_FILE, "r") as schema_file:
         schema = json.load(schema_file)
 
     valid_transactions = []

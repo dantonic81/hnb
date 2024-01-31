@@ -21,16 +21,21 @@ RAW_DATA_PATH = '/opt/dagster/app/raw_data'
 PROCESSED_DATA_PATH = '/opt/dagster/app/processed_data'
 ARCHIVED_DATA_PATH = '/opt/dagster/app/archived_data'
 INVALID_RECORDS_TABLE = 'data.invalid_customers'
+ERASURE_REQUESTS_SCHEMA_FILE = "erasure_requests_schema.json"
 
-connection_pool = SimpleConnectionPool(
-    minconn=1,
-    maxconn=10,
-    dbname=os.getenv("POSTGRES_DB"),
-    user=os.getenv("POSTGRES_USER"),
-    password=os.getenv("POSTGRES_PASSWORD"),
-    host=os.getenv("DB_HOST"),
-    port=os.getenv("DB_PORT"),
-)
+
+def create_connection_pool():
+    return SimpleConnectionPool(
+        minconn=1,
+        maxconn=10,
+        dbname=os.getenv("POSTGRES_DB"),
+        user=os.getenv("POSTGRES_USER"),
+        password=os.getenv("POSTGRES_PASSWORD"),
+        host=os.getenv("DB_HOST"),
+        port=os.getenv("DB_PORT"),
+    )
+
+connection_pool = create_connection_pool()
 
 
 def get_connection():
@@ -220,7 +225,7 @@ def log_invalid_erasure_request(connection, erasure_request, error_message, date
 
 
 def transform_and_validate_erasure_requests(connection, erasure_requests_data, date, hour):
-    with open("erasure_requests_schema.json", "r") as schema_file:
+    with open(ERASURE_REQUESTS_SCHEMA_FILE, "r") as schema_file:
         schema = json.load(schema_file)
 
     valid_erasure_requests = []

@@ -18,24 +18,22 @@ RAW_DATA_PATH = '/opt/dagster/app/raw_data'
 PROCESSED_DATA_PATH = '/opt/dagster/app/processed_data'
 ARCHIVED_DATA_PATH = '/opt/dagster/app/archived_data'
 INVALID_RECORDS_TABLE = 'data.invalid_products'
+PRODUCTS_SCHEMA_FILE = "products_schema.json"
 
 
-# Helper functions
-# TODO handle missing fields and duplicate skus in transformations
-# TODO add tests
-# TODO connect everything to minio
-# TODO log records in database for erasure requests and have single source of truth
+def create_connection_pool():
+    return SimpleConnectionPool(
+        minconn=1,
+        maxconn=10,
+        dbname=os.getenv("POSTGRES_DB"),
+        user=os.getenv("POSTGRES_USER"),
+        password=os.getenv("POSTGRES_PASSWORD"),
+        host=os.getenv("DB_HOST"),
+        port=os.getenv("DB_PORT"),
+    )
 
 
-connection_pool = SimpleConnectionPool(
-    minconn=1,
-    maxconn=10,
-    dbname=os.getenv("POSTGRES_DB"),
-    user=os.getenv("POSTGRES_USER"),
-    password=os.getenv("POSTGRES_PASSWORD"),
-    host=os.getenv("DB_HOST"),
-    port=os.getenv("DB_PORT"),
-)
+connection_pool = create_connection_pool()
 
 
 def get_connection():
