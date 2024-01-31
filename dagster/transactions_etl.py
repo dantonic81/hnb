@@ -13,7 +13,7 @@ import cProfile
 
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 RAW_DATA_PATH = '/opt/dagster/app/raw_data'
@@ -202,43 +202,59 @@ def get_purchases_by_transaction_id(connection, transaction_id):
 def log_processed_transactions(connection, date, hour, transaction_ids, transaction_times, customer_ids):
     actual_date = extract_actual_date(date)
     actual_hour = extract_actual_hour(hour)
+
     with connection.cursor() as cursor:
-        for transaction_id, transaction_time, customer_id in zip(transaction_ids, transaction_times, customer_ids):
-            # Check if the record already exists
-            cursor.execute("""
-                SELECT COUNT(*) FROM data.transactions
-                WHERE record_date = %s AND record_hour = %s AND transaction_id = %s;
-            """, (actual_date, actual_hour, transaction_id))
+        # Check if the records already exist
+        cursor.execute("""
+            SELECT transaction_id FROM data.transactions
+            WHERE record_date = %s AND record_hour = %s AND transaction_id IN %s;
+        """, (actual_date, actual_hour, tuple(transaction_ids)))
 
-            count = cursor.fetchone()[0]
-            if count == 0:
-                # Record doesn't exist, insert it
-                cursor.execute("""
-                    INSERT INTO data.transactions (record_date, record_hour, transaction_id, transaction_time, customer_id) 
+        existing_transactions = {row[0] for row in cursor.fetchall()}
+
+        # Filter out existing transactions
+        new_transactions = [
+            (actual_date, actual_hour, transaction_id, transaction_time, customer_id)
+            for transaction_id, transaction_time, customer_id in zip(transaction_ids, transaction_times, customer_ids)
+            if transaction_id not in existing_transactions
+        ]
+
+        # Bulk insert new transactions
+        if new_transactions:
+            cursor.executemany("""
+                INSERT INTO data.transactions (record_date, record_hour, transaction_id, transaction_time, customer_id) 
+                VALUES (%s, %s, %s, %s, %s);
+            """, new_transactions)
+
+            new_transaction_ids = [t[2] for t in new_transactions]
+
+            # Bulk insert delivery addresses
+            delivery_addresses = [
+                (transaction_id, address['address'], address['postcode'], address['city'], address['country'])
+                for transaction_id in new_transaction_ids
+                if (address := get_delivery_address_by_transaction_id(connection, transaction_id))
+            ]
+
+            if delivery_addresses:
+                cursor.executemany("""
+                    INSERT INTO data.delivery_addresses (transaction_id, address, postcode, city, country)
                     VALUES (%s, %s, %s, %s, %s);
-                """, (actual_date, actual_hour, transaction_id, transaction_time, customer_id))
+                """, delivery_addresses)
 
-                # Insert delivery_address into delivery_addresses table
-                delivery_address = get_delivery_address_by_transaction_id(connection, transaction_id)
-                if delivery_address:
-                    cursor.execute("""
-                        INSERT INTO data.delivery_addresses (transaction_id, address, postcode, city, country)
-                        VALUES (%s, %s, %s, %s, %s);
-                    """, (transaction_id, delivery_address['address'], delivery_address['postcode'], delivery_address['city'],
-                          delivery_address['country']))
+            # Bulk insert purchases
+            purchases = [
+                (transaction_id, purchase['sku'], purchase['quantity'], purchase['price'], purchase['total'])
+                for transaction_id in new_transaction_ids
+                if (purchases_data := get_purchases_by_transaction_id(connection, transaction_id))
+                for purchase in purchases_data
+            ]
 
-                purchases = get_purchases_by_transaction_id(connection, transaction_id)
-                # Check if purchases is not None before iterating
-                if purchases is not None:
-                    for purchase in purchases:
-                        cursor.execute("""
-                            INSERT INTO data.purchases (transaction_id, product_sku, quantity, price, total)
-                            VALUES (%s, %s, %s, %s, %s);
-                        """, (transaction_id, purchase['sku'], purchase['quantity'], purchase['price'], purchase['total']))
+            if purchases:
+                cursor.executemany("""
+                    INSERT INTO data.purchases (transaction_id, product_sku, quantity, price, total)
+                    VALUES (%s, %s, %s, %s, %s);
+                """, purchases)
 
-            else:
-                # Record already exists, log or handle accordingly
-                logger.info(f"Record for transaction_id {transaction_id} at {actual_date} {actual_hour} and customer id {customer_id} already exists.")
     connection.commit()
 
 
