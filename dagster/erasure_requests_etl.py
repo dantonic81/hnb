@@ -6,9 +6,10 @@ import logging
 import os
 from datetime import datetime
 from dotenv import load_dotenv
-from psycopg2.pool import SimpleConnectionPool
 import jsonschema
 from jsonschema import validate
+from common import connect_to_postgres, cleanup_empty_directories, archive_and_delete, extract_actual_date, extract_actual_hour, log_processing_statistics, extract_data
+import psycopg2
 
 load_dotenv()
 
@@ -22,32 +23,6 @@ PROCESSED_DATA_PATH = '/opt/dagster/app/processed_data'
 ARCHIVED_DATA_PATH = '/opt/dagster/app/archived_data'
 INVALID_RECORDS_TABLE = 'data.invalid_customers'
 ERASURE_REQUESTS_SCHEMA_FILE = "erasure_requests_schema.json"
-
-
-def create_connection_pool():
-    return SimpleConnectionPool(
-        minconn=1,
-        maxconn=10,
-        dbname=os.getenv("POSTGRES_DB"),
-        user=os.getenv("POSTGRES_USER"),
-        password=os.getenv("POSTGRES_PASSWORD"),
-        host=os.getenv("DB_HOST"),
-        port=os.getenv("DB_PORT"),
-    )
-
-connection_pool = create_connection_pool()
-
-
-def get_connection():
-    return connection_pool.getconn()
-
-
-def release_connection(conn):
-    connection_pool.putconn(conn)
-
-
-def connect_to_postgres():
-    return get_connection()
 
 
 # Query the customers table to get date and hour for a given customer_id
@@ -135,66 +110,12 @@ def process_erasure_requests(connection, erasure_requests):
                     archive_updated_file(file_path, date, hour)
 
 
-def extract_actual_date(date_str):
-    return datetime.strptime(date_str.replace("date=", ""), "%Y-%m-%d").date()
-
-
-# Extract the actual hour from the "hour=00" format
-def extract_actual_hour(hour_str):
-    return int(hour_str.replace("hour=", ""))
-
-
 def format_date_for_file_system(actual_date):
     return f"date={actual_date.strftime('%Y-%m-%d')}"
 
 
 def format_hour_for_file_system(actual_hour):
     return f"hour={actual_hour:02}"
-
-
-def log_processing_statistics(connection, date, hour, dataset_type, record_count, processing_time):
-    actual_date = extract_actual_date(date)
-    actual_hour = extract_actual_hour(hour)
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            INSERT INTO data.processing_statistics (record_date, record_hour, dataset_type, record_count, processing_time) 
-            VALUES (%s, %s, %s, %s, %s);
-        """, (actual_date, actual_hour, dataset_type, record_count, processing_time))
-    connection.commit()
-
-
-def extract_data(file_path):
-    if not file_path:
-        return []
-
-    _, file_extension = os.path.splitext(file_path)
-
-    if file_extension == '.gz':
-        print(f"FILE_PATH = {file_path}")
-        # Extract raw_data from a gzipped JSON file
-        with gzip.open(file_path, "rt") as file:
-            data = [json.loads(line) for line in file]
-    elif file_extension == '.json':
-        # Extract raw_data from a plain JSON file
-        with open(file_path, "r", encoding="utf-8") as file:
-            data = [json.load(file)]
-    else:
-        print(f"Unsupported file format: {file_extension}")
-        return []
-
-    return data
-
-
-def archive_and_delete(file_path, dataset_type, date, hour, archive_path):
-    archive_file = dataset_type
-    archive_file_path = os.path.join(archive_path, date, hour, archive_file)
-
-    # Create the archive directory if it doesn't exist
-    os.makedirs(os.path.dirname(archive_file_path), exist_ok=True)
-
-    # Archive the file
-    os.rename(file_path, archive_file_path)
-    logger.debug(f"File archived: {archive_file_path}")
 
 
 def log_invalid_erasure_request(connection, erasure_request, error_message, date, hour):
@@ -320,15 +241,6 @@ def process_hourly_data(connection, date, hour, available_datasets):
     logger.debug("Processing completed.")
 
 
-def cleanup_empty_directories(directory):
-    for root, dirs, files in os.walk(directory, topdown=False):
-        for dir_name in dirs:
-            dir_path = os.path.join(root, dir_name)
-            if not os.listdir(dir_path):
-                os.rmdir(dir_path)
-                logger.debug(f"Empty directory deleted: {dir_path}")
-
-
 def process_all_data():
     connection = connect_to_postgres()
     # Get a sorted list of date folders
@@ -358,8 +270,9 @@ def process_all_data():
 
         # Clean up empty directories in raw_data after processing
         cleanup_empty_directories(RAW_DATA_PATH)
-    finally:
-        release_connection(connection)
+    except (psycopg2.Error, Exception) as e:
+        logger.error(f"An error occurred while processing data: {str(e)}")
+        traceback.print_exc()
 
 
 def main():
