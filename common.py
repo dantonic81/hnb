@@ -122,7 +122,7 @@ def extract_actual_hour(hour_str) -> int:
     return int(hour_str.replace("hour=", ""))
 
 
-def log_processing_statistics(connection: Any, date: str, hour: str, dataset_type: str, record_count: int, processing_time: datetime.timedelta) -> None:
+def log_processing_statistics(connection: Any, date: str, hour: str, dataset_type: str, record_count: int, processing_time: datetime) -> None:
     """
     Log processing statistics.
 
