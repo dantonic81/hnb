@@ -76,7 +76,6 @@ def are_valid_product_skus(connection, products):
 def is_valid_total_cost(products, total_cost):
     # Calculate the total cost based on individual product prices and quantities
     calculated_total_cost = sum(float(product.get('price', 0)) * float(product.get('quanitity', 0)) for product in products)
-    print(f"Calculated Total Cost: {calculated_total_cost}, Provided Total Cost: {total_cost}")
     # Compare the calculated total cost with the provided total_cost
     return round(calculated_total_cost, 2) == round(float(total_cost), 2)
 
@@ -96,7 +95,7 @@ def transform_and_validate_transactions(connection, transactions_data, date, hou
             transaction_id = transaction.get('transaction_id')
             if transaction_id in unique_transaction_ids:
                 # Log or handle duplicate transaction_id
-                print(f"Duplicate transaction_id found: {transaction_id}")
+                logger.debug(f"Duplicate transaction_id found: {transaction_id}")
                 log_invalid_transaction(connection, transaction, "Duplicate transaction_id", date, hour)
                 continue
 
@@ -106,14 +105,14 @@ def transform_and_validate_transactions(connection, transactions_data, date, hou
             customer_id = transaction.get('customer_id')
             if not is_existing_customer(connection, customer_id):
                 # Log or handle invalid customer_id
-                print(f"Invalid customer_id found: {customer_id}")
+                logger.debug(f"Invalid customer_id found: {customer_id}")
                 log_invalid_transaction(connection, transaction, f"Invalid customer_id: {customer_id}", date, hour)
                 continue
 
             # Check if product skus correspond to existing products
             if not are_valid_product_skus(connection, transaction.get('purchases', {}).get('products', [])):
                 # Log or handle invalid product skus
-                print(f"Invalid product skus found in transaction_id: {transaction_id}")
+                logger.debug(f"Invalid product skus found in transaction_id: {transaction_id}")
                 log_invalid_transaction(connection, transaction, f"Invalid product skus", date, hour)
                 continue
 
@@ -121,7 +120,7 @@ def transform_and_validate_transactions(connection, transactions_data, date, hou
             purchases = transaction.get('purchases', {})
             if not is_valid_total_cost(purchases.get('products', []), purchases.get('total_cost')):
                 # Log or handle invalid total_cost
-                print(f"Invalid total_cost found in transaction_id: {transaction_id}")
+                logger.debug(f"Invalid total_cost found in transaction_id: {transaction_id}")
                 log_invalid_transaction(connection, transaction, f"Invalid total_cost", date, hour)
                 continue
 
@@ -129,7 +128,7 @@ def transform_and_validate_transactions(connection, transactions_data, date, hou
 
         except jsonschema.exceptions.ValidationError as e:
             # Log or handle validation errors
-            print(f"Validation error for transaction: {e}")
+            logger.error(f"Validation error for transaction: {e}")
             log_invalid_transaction(connection, transaction, str(e), date, hour)
             continue
 
@@ -241,17 +240,15 @@ def log_processed_transactions(connection, date, hour, transaction_ids, transact
 
 
 def process_hourly_data(connection, date, hour, available_datasets):
-    print(date, hour, len(available_datasets), available_datasets)
     dataset_paths = {dataset: os.path.join(RAW_DATA_PATH, f"{date}", f"{hour}", f"{dataset}")
                      for dataset in available_datasets}
-    print("Dataset Paths:", dataset_paths)
+    logger.debug("Dataset Paths:", dataset_paths)
 
     # Record the start time
     start_time = datetime.now()
 
     # Extract raw_data
     transactions_data = extract_data(dataset_paths.get("transactions.json.gz", ""))
-    print("Number of transactions:", len(transactions_data))
 
     # Transform and validate raw_data
     transformed_transactions = transform_and_validate_transactions(connection, transactions_data, date, hour)
@@ -274,7 +271,6 @@ def process_hourly_data(connection, date, hour, available_datasets):
 
     # Archive and delete the original files
     for dataset_type, dataset_path in dataset_paths.items():
-        print("Processing dataset:", dataset_type, "Path:", dataset_path)
         archive_and_delete(dataset_path, dataset_type, date, hour, ARCHIVED_DATA_PATH)
     logger.debug("Processing completed.")
 
@@ -285,7 +281,6 @@ def process_all_data():
     try:
         date_folders = os.listdir(RAW_DATA_PATH)
         date_folders.sort()
-        print("Date Folders:", date_folders)
         # Process all available raw_data
         for date_folder in date_folders:
             date_path = os.path.join(RAW_DATA_PATH, date_folder)
@@ -293,7 +288,6 @@ def process_all_data():
             # Get a sorted list of hour folders
             hour_folders = os.listdir(date_path)
             hour_folders.sort()
-            print(f"Hour Folders for {date_folder}:", hour_folders)
 
             for hour_folder in hour_folders:
                 hour_path = os.path.join(date_path, hour_folder)

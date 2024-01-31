@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS data.delivery_addresses (
 
 CREATE TABLE IF NOT EXISTS data.purchases (
     id SERIAL PRIMARY KEY,
-    transaction_id UUID REFERENCES data.transactions(transaction_id),
+    transaction_id UUID REFERENCES data.transactions(transaction_id) ON DELETE CASCADE,
     product_sku INTEGER NOT NULL,
     quantity INTEGER NOT NULL,
     price NUMERIC(10, 2) NOT NULL,

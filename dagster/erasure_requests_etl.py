@@ -51,16 +51,14 @@ def locate_processed_data_file(date, hour):
 
 # Anonymize and update the data in the processed data file
 def anonymize_and_update_data(file_path, customer_id, erasure_request):
-    print(f"FILE_PATH: {file_path}, customer_id: {customer_id}, erasure request: {erasure_request}")
     email_to_anonymize = erasure_request.get("email")
     anonymized_email = hashlib.sha256(email_to_anonymize.encode()).hexdigest()
-    print(f"EMAIL TO ANONYMIZE: {email_to_anonymize}, anonymized_email: {anonymized_email}")
+    logger.debug(f"email: {email_to_anonymize}, anonymized_email: {anonymized_email}")
     try:
         is_gzipped = file_path.endswith(".gz")
 
         with (gzip.open(file_path, "rt") if is_gzipped else open(file_path, "r")) as file:
             data = [json.loads(line) for line in file]
-            # print(f"DATA {data}")
 
         for record in data:
             if record.get("id") == customer_id:
@@ -89,9 +87,7 @@ def archive_updated_file(file_path, date, hour):
 
 
 def process_erasure_requests(connection, erasure_requests):
-    print(f"ERASURE REQUESTS {erasure_requests}")
     for erasure_request in erasure_requests:
-        print(f"ERASURE_REQUEST {erasure_request}")
         customer_id = erasure_request.get("customer-id")
         if customer_id:
             # Step 1: Query the processed_data_log table to get date and hour
@@ -101,7 +97,6 @@ def process_erasure_requests(connection, erasure_requests):
 
                 # Step 2: Locate the processed data file
                 file_path = locate_processed_data_file(date, hour)
-                print(f"FILE PATH BEFORE ENTERING INTO ANONYMIZER: {file_path}")
                 if file_path:
                     # Step 3: Anonymize and update the data
                     anonymize_and_update_data(file_path, customer_id, erasure_request)
@@ -169,12 +164,12 @@ def transform_and_validate_erasure_requests(connection, erasure_requests_data, d
                 valid_erasure_requests.append(erasure_request)
             else:
                 # Log or handle duplicate customer-id
-                print(f"Duplicate customer-id found for erasure request: {customer_id}")
+                logger.debug(f"Duplicate customer-id found for erasure request: {customer_id}")
                 log_invalid_erasure_request(connection, erasure_request, "Duplicate customer-id", date, hour)
 
         except jsonschema.exceptions.ValidationError as e:
             # Log or handle validation errors
-            print(f"Validation error for erasure request: {e}")
+            logger.error(f"Validation error for erasure request: {e}")
             log_invalid_erasure_request(connection, erasure_request, str(e), date, hour)
             continue
 
@@ -206,10 +201,9 @@ def log_processed_erasure_requests(connection, date, hour, customer_ids, emails)
 
 
 def process_hourly_data(connection, date, hour, available_datasets):
-    print(date, hour, len(available_datasets), available_datasets)
     dataset_paths = {dataset: os.path.join(RAW_DATA_PATH, f"{date}", f"{hour}", f"{dataset}")
                      for dataset in available_datasets}
-    print("Dataset Paths:", dataset_paths)
+    logger.debug("Dataset Paths:", dataset_paths)
 
     # Record the start time
     start_time = datetime.now()
@@ -236,7 +230,6 @@ def process_hourly_data(connection, date, hour, available_datasets):
 
     # Archive and delete the original files
     for dataset_type, dataset_path in dataset_paths.items():
-        print("Processing dataset:", dataset_type, "Path:", dataset_path)
         archive_and_delete(dataset_path, dataset_type, date, hour, ARCHIVED_DATA_PATH)
     logger.debug("Processing completed.")
 
@@ -247,7 +240,6 @@ def process_all_data():
     try:
         date_folders = os.listdir(RAW_DATA_PATH)
         date_folders.sort()
-        print("Date Folders:", date_folders)
         # Process all available raw_data
         for date_folder in date_folders:
             date_path = os.path.join(RAW_DATA_PATH, date_folder)
@@ -255,7 +247,6 @@ def process_all_data():
             # Get a sorted list of hour folders
             hour_folders = os.listdir(date_path)
             hour_folders.sort()
-            print(f"Hour Folders for {date_folder}:", hour_folders)
 
             for hour_folder in hour_folders:
                 hour_path = os.path.join(date_path, hour_folder)

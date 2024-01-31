@@ -74,12 +74,12 @@ def transform_and_validate_customers(connection, customers_data, date, hour):
                 valid_customers.append(customer)
             else:
                 # Log or handle duplicate id
-                print(f"Duplicate id found for customer: {customer['id']}")
+                logger.debug(f"Duplicate id found for customer: {customer['id']}")
                 log_invalid_customer(connection, customer, "Duplicate id", date, hour)
 
         except jsonschema.exceptions.ValidationError as e:
             # Log or handle validation errors
-            print(f"Validation error for customer: {e}")
+            logger.error(f"Validation error for customer: {e}")
             log_invalid_customer(connection, customer, str(e), date, hour)
             continue
 
@@ -115,17 +115,15 @@ def log_processed_customers(connection, date, hour, customer_ids, first_names, l
 
 
 def process_hourly_data(connection, date, hour, available_datasets):
-    print(date, hour, len(available_datasets), available_datasets)
     dataset_paths = {dataset: os.path.join(RAW_DATA_PATH, f"{date}", f"{hour}", f"{dataset}")
                      for dataset in available_datasets}
-    print("Dataset Paths:", dataset_paths)
+    logger.debug("Dataset Paths:", dataset_paths)
 
     # Record the start time
     start_time = datetime.now()
 
     # Extract raw_data
     customers_data = extract_data(dataset_paths.get("customers.json.gz", ""))
-    print("Number of customers:", len(customers_data))
 
     # Transform and validate raw_data
     transformed_customers = transform_and_validate_customers(connection, customers_data, date, hour)
@@ -149,7 +147,7 @@ def process_hourly_data(connection, date, hour, available_datasets):
 
     # Archive and delete the original files
     for dataset_type, dataset_path in dataset_paths.items():
-        print("Processing dataset:", dataset_type, "Path:", dataset_path)
+        logger.debug("Processing dataset:", dataset_type, "Path:", dataset_path)
         archive_and_delete(dataset_path, dataset_type, date, hour, ARCHIVED_DATA_PATH)
     logger.debug("Processing completed.")
 
@@ -160,7 +158,6 @@ def process_all_data():
     try:
         date_folders = os.listdir(RAW_DATA_PATH)
         date_folders.sort()
-        print("Date Folders:", date_folders)
         # Process all available raw_data
         for date_folder in date_folders:
             date_path = os.path.join(RAW_DATA_PATH, date_folder)
@@ -168,7 +165,6 @@ def process_all_data():
             # Get a sorted list of hour folders
             hour_folders = os.listdir(date_path)
             hour_folders.sort()
-            print(f"Hour Folders for {date_folder}:", hour_folders)
 
             for hour_folder in hour_folders:
                 hour_path = os.path.join(date_path, hour_folder)
