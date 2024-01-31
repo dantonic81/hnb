@@ -1,4 +1,3 @@
-import traceback
 import json
 import logging
 import os
@@ -156,8 +155,7 @@ def process_hourly_data(connection, date, hour, available_datasets):
     logger.debug("Processing completed.")
 
 
-def process_all_data():
-    connection = connect_to_postgres()
+def process_all_data(connection):
     # Get a sorted list of date folders
     try:
         date_folders = os.listdir(RAW_DATA_PATH)
@@ -185,16 +183,17 @@ def process_all_data():
         cleanup_empty_directories(RAW_DATA_PATH)
 
     except (psycopg2.Error, Exception) as e:
-        logger.error(f"An error occurred while processing data: {str(e)}")
-        traceback.print_exc()
+        logger.exception(f"An error occurred while processing data")
 
 
 def main():
     try:
-        process_all_data()
+        with connect_to_postgres() as connection:
+            process_all_data(connection)
+    except psycopg2.Error as e:
+        logger.exception(f"An error occurred while processing data")
     except Exception as e:
-        logger.error(f"An error occurred: {str(e)}")
-        traceback.print_exc()
+        logger.exception(f"An error occurred")
 
 
 if __name__ == "__main__":
