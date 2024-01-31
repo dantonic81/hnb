@@ -5,13 +5,20 @@ from datetime import datetime
 import logging
 import gzip
 import json
+from typing import Any, Generator
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# Create connection pool
-def create_connection_pool():
+def create_connection_pool() -> SimpleConnectionPool:
+    """
+    Create a PostgreSQL connection pool.
+
+    Returns:
+        SimpleConnectionPool: A PostgreSQL connection pool.
+    """
     return SimpleConnectionPool(
         minconn=1,
         maxconn=10,
@@ -23,9 +30,14 @@ def create_connection_pool():
     )
 
 
-# Context manager for acquiring and releasing a connection
 @contextmanager
-def get_postgres_connection():
+def get_postgres_connection() -> Generator:
+    """
+    Context manager for acquiring and releasing a PostgreSQL connection.
+
+    Yields:
+        Any: A PostgreSQL connection.
+    """
     connection_pool = create_connection_pool()
     connection = connection_pool.getconn()
 
@@ -35,13 +47,24 @@ def get_postgres_connection():
         connection_pool.putconn(connection)
 
 
-# Connect to PostgreSQL using the context manager
-def connect_to_postgres():
+def connect_to_postgres() -> Any:
+    """
+    Connect to PostgreSQL using the context manager.
+
+    Returns:
+        Any: A PostgreSQL connection.
+    """
     with get_postgres_connection() as connection:
         return connection
 
 
-def cleanup_empty_directories(directory):
+def cleanup_empty_directories(directory: str) -> None:
+    """
+    Cleanup empty directories in the specified directory.
+
+    Args:
+        directory (str): The directory to cleanup.
+    """
     for root, dirs, files in os.walk(directory, topdown=False):
         for dir_name in dirs:
             dir_path = os.path.join(root, dir_name)
@@ -50,7 +73,17 @@ def cleanup_empty_directories(directory):
                 logger.debug(f"Empty directory deleted: {dir_path}")
 
 
-def archive_and_delete(file_path, dataset_type, date, hour, archive_path):
+def archive_and_delete(file_path: str, dataset_type: str, date: str, hour: str, archive_path: str) -> None:
+    """
+    Archive and delete the specified file.
+
+    Args:
+        file_path (str): The path of the file to archive and delete.
+        dataset_type (str): The type of the dataset.
+        date (str): The date of the dataset.
+        hour (str): The hour of the dataset.
+        archive_path (str): The path where the file should be archived.
+    """
     archive_file = dataset_type
     archive_file_path = os.path.join(archive_path, date, hour, archive_file)
 
@@ -62,16 +95,45 @@ def archive_and_delete(file_path, dataset_type, date, hour, archive_path):
     logger.debug(f"File archived: {archive_file_path}")
 
 
-def extract_actual_date(date_str):
+def extract_actual_date(date_str: str) -> datetime.date:
+    """
+    Extract the actual date from the formatted date string.
+
+    Args:
+        date_str (str): The formatted date string.
+
+    Returns:
+        datetime.date: The actual date.
+    """
     return datetime.strptime(date_str.replace("date=", ""), "%Y-%m-%d").date()
 
 
 # Extract the actual hour from the "hour=00" format
-def extract_actual_hour(hour_str):
+def extract_actual_hour(hour_str) -> int:
+    """
+    Extract the actual hour from the formatted hour string.
+
+    Args:
+        hour_str (str): The formatted hour string.
+
+    Returns:
+        int: The actual hour.
+    """
     return int(hour_str.replace("hour=", ""))
 
 
-def log_processing_statistics(connection, date, hour, dataset_type, record_count, processing_time):
+def log_processing_statistics(connection: Any, date: str, hour: str, dataset_type: str, record_count: int, processing_time: datetime.timedelta) -> None:
+    """
+    Log processing statistics.
+
+    Args:
+        connection (Any): The PostgreSQL connection.
+        date (str): The date of the processed data.
+        hour (str): The hour of the processed data.
+        dataset_type (str): The type of the processed dataset.
+        record_count (int): The number of records processed.
+        processing_time (datetime.timedelta): The time taken for processing.
+    """
     actual_date = extract_actual_date(date)
     actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
@@ -82,7 +144,16 @@ def log_processing_statistics(connection, date, hour, dataset_type, record_count
     connection.commit()
 
 
-def extract_data(file_path):
+def extract_data(file_path: str) -> list:
+    """
+    Extract data from the specified file.
+
+    Args:
+        file_path (str): The path of the file.
+
+    Returns:
+        list: The extracted data.
+    """
     if not file_path:
         return []
 
@@ -103,7 +174,17 @@ def extract_data(file_path):
     return data
 
 
-def load_data(data, dataset_type, date, hour, processed_data_path):
+def load_data(data: list, dataset_type: str, date: str, hour: str, processed_data_path: str) -> None:
+    """
+    Load data to the specified location.
+
+    Args:
+        data (list): The data to be loaded.
+        dataset_type (str): The type of the dataset.
+        date (str): The date of the dataset.
+        hour (str): The hour of the dataset.
+        processed_data_path (str): The path where the data should be loaded.
+    """
     logger.debug(f"Loading data {data} for {dataset_type} {date} {hour}")
     # Create the corresponding subdirectories in processed_data
     output_dir = os.path.join(processed_data_path, date, hour)
