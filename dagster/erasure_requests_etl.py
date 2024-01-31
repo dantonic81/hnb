@@ -192,6 +192,69 @@ def archive_and_delete(file_path, dataset_type, date, hour, archive_path):
     logger.debug(f"File archived: {archive_file_path}")
 
 
+def log_invalid_erasure_request(connection, erasure_request, error_message, date, hour):
+    actual_date = extract_actual_date(date)
+    actual_hour = extract_actual_hour(hour)
+    with connection.cursor() as cursor:
+        # Check if the customer with the same id already exists
+        customer_id = erasure_request.get("customer_id")
+        cursor.execute("""
+            SELECT customer_id FROM data.invalid_erasure_requests WHERE customer_id = %s;
+        """, (customer_id,))
+
+        existing_record = cursor.fetchone()
+
+        if existing_record:
+            # Update the existing record if needed
+            cursor.execute("""
+                UPDATE data.invalid_erasure_requests
+                SET error_message = %s
+                WHERE customer_id = %s;
+            """, (error_message, customer_id))
+        else:
+            cursor.execute("""
+                INSERT INTO data.invalid_erasure_requests (record_date, record_hour, customer_id, error_message) 
+                VALUES (%s, %s, %s, %s);
+            """, (actual_date, actual_hour, customer_id, error_message))
+    connection.commit()
+
+
+def transform_and_validate_erasure_requests(connection, erasure_requests_data, date, hour):
+    with open("erasure_requests_schema.json", "r") as schema_file:
+        schema = json.load(schema_file)
+
+    valid_erasure_requests = []
+
+    # Keep track of unique customer-ids
+    unique_customer_ids = set()
+
+    # Validate each erasure request against the schema
+    for erasure_request in erasure_requests_data:
+        try:
+            # Perform validation
+            validate(instance=erasure_request, schema=schema)
+
+            # Extract customer-id from the erasure request
+            customer_id = erasure_request.get("customer-id")
+
+            # Check uniqueness of customer-id
+            if customer_id and customer_id not in unique_customer_ids:
+                unique_customer_ids.add(customer_id)
+                valid_erasure_requests.append(erasure_request)
+            else:
+                # Log or handle duplicate customer-id
+                print(f"Duplicate customer-id found for erasure request: {customer_id}")
+                log_invalid_erasure_request(connection, erasure_request, "Duplicate customer-id", date, hour)
+
+        except jsonschema.exceptions.ValidationError as e:
+            # Log or handle validation errors
+            print(f"Validation error for erasure request: {e}")
+            log_invalid_erasure_request(connection, erasure_request, str(e), date, hour)
+            continue
+
+    return valid_erasure_requests
+
+
 def process_hourly_data(connection, date, hour, available_datasets):
     print(date, hour, len(available_datasets), available_datasets)
     dataset_paths = {dataset: os.path.join(RAW_DATA_PATH, f"{date}", f"{hour}", f"{dataset}")
@@ -206,6 +269,8 @@ def process_hourly_data(connection, date, hour, available_datasets):
     for dataset_type in ["erasure-requests.json.gz", "erasure-requests.json"]:
         if dataset_type in dataset_paths:
             erasure_requests_data.extend(extract_data(dataset_paths[dataset_type]))
+
+    transformed_and_validated_erasure_requests = transform_and_validate_erasure_requests(connection, erasure_requests_data, date, hour)
 
     process_erasure_requests(connection, erasure_requests_data)
 

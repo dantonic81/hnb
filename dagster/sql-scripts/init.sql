@@ -100,3 +100,12 @@ CREATE TABLE IF NOT EXISTS data.invalid_customers (
     error_message TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE data.invalid_erasure_requests (
+    customer_id INT PRIMARY KEY,
+    record_date DATE NOT NULL,
+    record_hour TIME NOT NULL,
+    email VARCHAR(255),
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

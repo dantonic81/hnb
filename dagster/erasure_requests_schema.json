@@ -2,17 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
-    "customer-id": {
-      "type": "string"
-    },
-    "email": {
-      "type": "string"
-    }
+    "customer-id": { "type": "string" },
+    "email": { "type": "string" }
   },
-  "oneOf": [
-    { "required": ["customer-id"] },
-    { "required": ["email"] },
-    { "required": ["customer-id", "email"] }
-  ],
   "additionalProperties": false
 }
