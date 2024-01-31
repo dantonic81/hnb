@@ -104,8 +104,17 @@ CREATE TABLE IF NOT EXISTS data.invalid_customers (
 CREATE TABLE data.invalid_erasure_requests (
     customer_id INT PRIMARY KEY,
     record_date DATE NOT NULL,
-    record_hour TIME NOT NULL,
+    record_hour INTEGER NOT NULL,
     email VARCHAR(255),
     error_message TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE data.erasure_requests (
+    customer_id INT PRIMARY KEY,
+    record_date DATE NOT NULL,
+    record_hour INTEGER NOT NULL,
+    email VARCHAR(255),
+    error_message TEXT,
+    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

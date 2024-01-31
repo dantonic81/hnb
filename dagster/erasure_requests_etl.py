@@ -197,7 +197,7 @@ def log_invalid_erasure_request(connection, erasure_request, error_message, date
     actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
         # Check if the customer with the same id already exists
-        customer_id = erasure_request.get("customer_id")
+        customer_id = erasure_request.get("customer-id")
         cursor.execute("""
             SELECT customer_id FROM data.invalid_erasure_requests WHERE customer_id = %s;
         """, (customer_id,))
@@ -255,6 +255,30 @@ def transform_and_validate_erasure_requests(connection, erasure_requests_data, d
     return valid_erasure_requests
 
 
+def log_processed_erasure_requests(connection, date, hour, customer_ids, emails):
+    actual_date = extract_actual_date(date)
+    actual_hour = extract_actual_hour(hour)
+    with connection.cursor() as cursor:
+        for customer_id, email in zip(customer_ids, emails):
+            # Check if the record already exists
+            cursor.execute("""
+                SELECT COUNT(*) FROM data.erasure_requests 
+                WHERE record_date = %s AND record_hour = %s AND customer_id = %s;
+            """, (actual_date, actual_hour, customer_id))
+
+            count = cursor.fetchone()[0]
+            if count == 0:
+                # Record doesn't exist, insert it
+                cursor.execute("""
+                    INSERT INTO data.erasure_requests (record_date, record_hour, customer_id, email) 
+                    VALUES (%s, %s, %s, %s);
+                """, (actual_date, actual_hour, customer_id, email))
+            else:
+                # Record already exists, log or handle accordingly
+                logger.info(f"Record for customer_id {customer_id} at {actual_date} {actual_hour} already exists.")
+    connection.commit()
+
+
 def process_hourly_data(connection, date, hour, available_datasets):
     print(date, hour, len(available_datasets), available_datasets)
     dataset_paths = {dataset: os.path.join(RAW_DATA_PATH, f"{date}", f"{hour}", f"{dataset}")
@@ -273,6 +297,9 @@ def process_hourly_data(connection, date, hour, available_datasets):
     transformed_and_validated_erasure_requests = transform_and_validate_erasure_requests(connection, erasure_requests_data, date, hour)
 
     process_erasure_requests(connection, erasure_requests_data)
+    customer_ids = [request["customer-id"] for request in transformed_and_validated_erasure_requests]
+    emails = [request["email"] for request in transformed_and_validated_erasure_requests]
+    log_processed_erasure_requests(connection, date, hour, customer_ids, emails)
 
     # Record the end time
     end_time = datetime.now()
