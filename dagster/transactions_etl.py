@@ -8,6 +8,7 @@ import jsonschema
 from jsonschema import validate
 from common import archive_and_delete, extract_actual_date, extract_actual_hour, connect_to_postgres, extract_data, load_data, log_processing_statistics, cleanup_empty_directories
 import psycopg2
+import cProfile
 
 
 load_dotenv()
@@ -20,6 +21,11 @@ PROCESSED_DATA_PATH = '/opt/dagster/app/processed_data'
 ARCHIVED_DATA_PATH = '/opt/dagster/app/archived_data'
 INVALID_RECORDS_TABLE = 'data.invalid_transactions'
 TRANSACTIONS_SCHEMA_FILE = "transactions_schema.json"
+
+
+# Load the JSON schema once and store it in a variable
+with open(TRANSACTIONS_SCHEMA_FILE, "r") as schema_file:
+    TRANSACTIONS_SCHEMA = json.load(schema_file)
 
 
 def log_invalid_transaction(connection, transaction, error_message, date, hour):
@@ -76,9 +82,7 @@ def is_valid_total_cost(products, total_cost):
 
 
 def transform_and_validate_transactions(connection, transactions_data, date, hour):
-    # Load the JSON schema
-    with open(TRANSACTIONS_SCHEMA_FILE, "r") as schema_file:
-        schema = json.load(schema_file)
+    schema = TRANSACTIONS_SCHEMA
 
     valid_transactions = []
     unique_transaction_ids = set()
@@ -318,4 +322,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    cProfile.run('main()', sort='cumulative')
