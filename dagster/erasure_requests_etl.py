@@ -109,7 +109,9 @@ def archive_updated_file(file_path, date, hour):
 
 
 def process_erasure_requests(connection, erasure_requests):
+    print(f"ERASURE REQUESTS {erasure_requests}")
     for erasure_request in erasure_requests:
+        print(f"ERASURE_REQUEST {erasure_request}")
         customer_id = erasure_request.get("customer-id")
         if customer_id:
             # Step 1: Query the processed_data_log table to get date and hour
@@ -170,7 +172,7 @@ def extract_data(file_path):
     elif file_extension == '.json':
         # Extract raw_data from a plain JSON file
         with open(file_path, "r", encoding="utf-8") as file:
-            data = json.load(file)
+            data = [json.load(file)]
     else:
         print(f"Unsupported file format: {file_extension}")
         return []
@@ -199,25 +201,11 @@ def process_hourly_data(connection, date, hour, available_datasets):
     # Record the start time
     start_time = datetime.now()
 
-    # import shutil
-    # # Process each dataset
-    # for dataset_type, dataset_path in dataset_paths.items():
-    #     print("Processing dataset:", dataset_type, "Path:", dataset_path)
-    #
-    #     # Check if the file is already gzipped
-    #     if not dataset_path.endswith('.gz'):
-    #         gzipped_file_path = f"{dataset_path}.gz"
-    #         with open(dataset_path, 'rb') as f_in:
-    #             with gzip.open(gzipped_file_path, 'wb') as f_out:
-    #                 f_out.writelines(f_in)
-    #
-    #         # Update the dataset path to the gzipped file
-    #         dataset_paths[dataset_type] = gzipped_file_path
-
-
-    # Extract raw_data
-    erasure_requests_data = extract_data(dataset_paths.get("erasure-requests.json.gz", ""))
-    print("Number of erasure requests:", len(erasure_requests_data))
+    # Extract raw_data from both .json.gz and .json files
+    erasure_requests_data = []
+    for dataset_type in ["erasure-requests.json.gz", "erasure-requests.json"]:
+        if dataset_type in dataset_paths:
+            erasure_requests_data.extend(extract_data(dataset_paths[dataset_type]))
 
     process_erasure_requests(connection, erasure_requests_data)
 
