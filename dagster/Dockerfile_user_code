@@ -1,4 +1,4 @@
-FROM python:3.8-slim
+FROM python:3.8.10-slim
 
 # Checkout and install dagster libraries needed to run the gRPC server
 # exposing your repository to dagster-webserver and dagster-daemon, and to load the DagsterInstance
@@ -11,19 +11,11 @@ RUN pip install \
 # Add repository code
 WORKDIR /opt/dagster/app
 
-COPY .env /opt/dagster/app
-COPY requirements.txt /opt/dagster/app
-COPY customers_etl.py transactions_etl.py products_etl.py erasure_requests_etl.py common.py /opt/dagster/app/
-COPY customer_schema.json transactions_schema.json products_schema.json erasure_requests_schema.json /opt/dagster/app/
+COPY . .
 
 # Install any needed packages specified in requirements.txt
-RUN pip install --trusted-host pypi.python.org --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY repo.py erasure_requests.py customers.py transactions.py products.py /opt/dagster/app/
-
-COPY raw_data /opt/dagster/app/raw_data
-COPY processed_data /opt/dagster/app/processed_data
-COPY archived_data /opt/dagster/app/archived_data
 # Run dagster gRPC server on port 4000
 
 EXPOSE 4000
