@@ -97,6 +97,7 @@ services:
     depends_on:
       - dwh
       - docker_example_user_code
+      - docker_example_webserver
     healthcheck:
       test: ["CMD", "dagster-daemon", "liveness-check"]
       interval: 30s
