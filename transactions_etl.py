@@ -6,7 +6,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 import jsonschema
 from jsonschema import validate
-from common import archive_and_delete, extract_actual_date, extract_actual_hour, connect_to_postgres, extract_data, load_data, log_processing_statistics, cleanup_empty_directories
+from common import load_data, archive_and_delete, extract_actual_date, extract_actual_hour, connect_to_postgres, extract_data, log_processing_statistics, cleanup_empty_directories
 import psycopg2
 import cProfile
 
@@ -138,124 +138,67 @@ def transform_and_validate_transactions(connection, transactions_data, date, hou
     return valid_transactions
 
 
-def get_delivery_address_by_transaction_id(connection, transaction_id):
-    """
-    Retrieve delivery address information for a given transaction_id.
-
-    Parameters:
-    - connection: Database connection object
-    - transaction_id: ID of the transaction
-
-    Returns:
-    - Dictionary containing delivery address information
-    """
+def log_processed_transactions(connection, date, hour, transactions):
     with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT address, postcode, city, country
-            FROM data.delivery_addresses
-            WHERE transaction_id = %s;
-        """, (transaction_id,))
+        for transaction in transactions:
+            transaction_id = transaction.get('transaction_id')
+            record_date = extract_actual_date(date)
+            record_hour = extract_actual_hour(hour)
 
-        result = cursor.fetchone()
+            # Check if the transaction_id already exists
+            cursor.execute("""
+                SELECT COUNT(*) FROM data.transactions
+                WHERE transaction_id = %s;
+            """, (transaction_id,))
 
-    return {
-        'address': result[0],
-        'postcode': result[1],
-        'city': result[2],
-        'country': result[3]
-    } if result else None
+            if cursor.fetchone()[0] > 0:
+                logger.debug(f"Duplicate transaction_id found: {transaction_id}")
+                # Log or handle duplicate transaction_id
+                continue
 
-
-def get_purchases_by_transaction_id(connection, transaction_id):
-    """
-    Retrieve purchase information for a given transaction_id.
-
-    Parameters:
-    - connection: Database connection object
-    - transaction_id: ID of the transaction
-
-    Returns:
-    - List of dictionaries containing purchase information
-    """
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT product_sku, quantity, price, total
-            FROM data.purchases
-            WHERE transaction_id = %s;
-        """, (transaction_id,))
-
-        results = cursor.fetchall()
-
-    # Convert the results to a list of dictionaries
-    purchases = []
-    for result in results:
-        purchases.append({
-            'product_sku': result[0],
-            'quantity': result[1],
-            'price': result[2],
-            'total': result[3]
-        })
-
-    return purchases if purchases else None
-
-
-def log_processed_transactions(connection, date, hour, transaction_ids, transaction_times, customer_ids):
-    actual_date = extract_actual_date(date)
-    actual_hour = extract_actual_hour(hour)
-
-    with connection.cursor() as cursor:
-        # Check if the records already exist
-        cursor.execute("""
-            SELECT transaction_id FROM data.transactions
-            WHERE record_date = %s AND record_hour = %s AND transaction_id IN %s;
-        """, (actual_date, actual_hour, tuple(transaction_ids)))
-
-        existing_transactions = {row[0] for row in cursor.fetchall()}
-
-        # Filter out existing transactions
-        new_transactions = [
-            (actual_date, actual_hour, transaction_id, transaction_time, customer_id)
-            for transaction_id, transaction_time, customer_id in zip(transaction_ids, transaction_times, customer_ids)
-            if transaction_id not in existing_transactions
-        ]
-
-        # Bulk insert new transactions
-        if new_transactions:
-            cursor.executemany("""
-                INSERT INTO data.transactions (record_date, record_hour, transaction_id, transaction_time, customer_id) 
+            # Insert transaction data
+            cursor.execute("""
+                INSERT INTO data.transactions (transaction_id, transaction_time, customer_id, record_date, record_hour) 
                 VALUES (%s, %s, %s, %s, %s);
-            """, new_transactions)
+            """, (
+                transaction_id,
+                transaction.get('transaction_time'),
+                transaction.get('customer_id'),
+                record_date,
+                record_hour
+            ))
 
-            new_transaction_ids = [t[2] for t in new_transactions]
-
-            # Bulk insert delivery addresses
-            delivery_addresses = [
-                (transaction_id, address['address'], address['postcode'], address['city'], address['country'])
-                for transaction_id in new_transaction_ids
-                if (address := get_delivery_address_by_transaction_id(connection, transaction_id))
-            ]
-
-            if delivery_addresses:
-                cursor.executemany("""
+            # Insert delivery address data
+            delivery_address = transaction.get('delivery_address')
+            if delivery_address:
+                cursor.execute("""
                     INSERT INTO data.delivery_addresses (transaction_id, address, postcode, city, country)
                     VALUES (%s, %s, %s, %s, %s);
-                """, delivery_addresses)
+                """, (
+                    transaction_id,
+                    delivery_address.get('address'),
+                    delivery_address.get('postcode'),
+                    delivery_address.get('city'),
+                    delivery_address.get('country')
+                ))
 
-            # Bulk insert purchases
-            purchases = [
-                (transaction_id, purchase['sku'], purchase['quantity'], purchase['price'], purchase['total'])
-                for transaction_id in new_transaction_ids
-                if (purchases_data := get_purchases_by_transaction_id(connection, transaction_id))
-                for purchase in purchases_data
-            ]
-
-            if purchases:
-                cursor.executemany("""
+            # Insert purchases data
+            purchases = transaction.get('purchases', {}).get('products', [])
+            total_cost = transaction.get('purchases', {}).get('total_cost')
+            for purchase in purchases:
+                cursor.execute("""
                     INSERT INTO data.purchases (transaction_id, product_sku, quantity, price, total)
                     VALUES (%s, %s, %s, %s, %s);
-                """, purchases)
+                """, (
+                    transaction_id,
+                    purchase.get('sku'),
+                    purchase.get('quanitity'),
+                    purchase.get('price'),
+                    purchase.get('total')
+                ))
 
     connection.commit()
+    logger.debug(f"Data loaded successfully for transactions ({date}/{hour}).")
 
 
 def process_hourly_data(connection, date, hour, available_datasets):
@@ -276,10 +219,7 @@ def process_hourly_data(connection, date, hour, available_datasets):
     load_data(transformed_transactions, "transactions.json.gz", date, hour, PROCESSED_DATA_PATH)
 
     # Log processed transactions
-    transaction_ids = [transaction["transaction_id"] for transaction in transformed_transactions]
-    customer_ids = [transaction["customer_id"] for transaction in transformed_transactions]
-    transaction_times = [transaction["transaction_time"] for transaction in transformed_transactions]
-    log_processed_transactions(connection, date, hour, transaction_ids, transaction_times, customer_ids)
+    log_processed_transactions(connection, date, hour, transformed_transactions)
 
     # Record the end time
     end_time = datetime.now()
