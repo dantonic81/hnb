@@ -7,7 +7,15 @@ from datetime import datetime
 from dotenv import load_dotenv
 import jsonschema
 from jsonschema import validate
-from common import connect_to_postgres, cleanup_empty_directories, archive_and_delete, extract_actual_date, extract_actual_hour, log_processing_statistics, extract_data
+from common import (
+    connect_to_postgres,
+    cleanup_empty_directories,
+    archive_and_delete,
+    extract_actual_date,
+    extract_actual_hour,
+    log_processing_statistics,
+    extract_data,
+)
 import psycopg2
 from typing import Any, Optional, Tuple, List, Dict
 
@@ -18,10 +26,10 @@ logger = logging.getLogger(__name__)
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-RAW_DATA_PATH = '/opt/dagster/app/raw_data'
-PROCESSED_DATA_PATH = '/opt/dagster/app/processed_data'
-ARCHIVED_DATA_PATH = '/opt/dagster/app/archived_data'
-INVALID_RECORDS_TABLE = 'data.invalid_customers'
+RAW_DATA_PATH = "/opt/dagster/app/raw_data"
+PROCESSED_DATA_PATH = "/opt/dagster/app/processed_data"
+ARCHIVED_DATA_PATH = "/opt/dagster/app/archived_data"
+INVALID_RECORDS_TABLE = "data.invalid_customers"
 ERASURE_REQUESTS_SCHEMA_FILE = "erasure_requests_schema.json"
 
 
@@ -30,7 +38,9 @@ with open(ERASURE_REQUESTS_SCHEMA_FILE, "r") as schema_file:
 
 
 # Query the customers table to get date and hour for a given customer_id
-def get_date_and_hour_to_anonymize(connection: Any, customer_id: str) -> Optional[Tuple[datetime, int]]:
+def get_date_and_hour_to_anonymize(
+    connection: Any, customer_id: str
+) -> Optional[Tuple[datetime, int]]:
     """
     Query the customers table to get date and hour for a given customer_id.
 
@@ -42,10 +52,13 @@ def get_date_and_hour_to_anonymize(connection: Any, customer_id: str) -> Optiona
         Optional[Tuple[datetime, int]]: A tuple containing date and hour if the customer is found, else None.
     """
     with connection.cursor() as cursor:
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT record_date, record_hour FROM data.customers
             WHERE id = %s
-        """, (customer_id,))
+        """,
+            (customer_id,),
+        )
         result = cursor.fetchone()
         if result:
             return result
@@ -65,15 +78,21 @@ def locate_processed_data_file(date: datetime, hour: int) -> Optional[str]:
     """
     formatted_date = format_date_for_file_system(date)
     formatted_hour = format_hour_for_file_system(hour)
-    processed_data_path = os.path.join(PROCESSED_DATA_PATH, str(formatted_date), str(formatted_hour))
+    processed_data_path = os.path.join(
+        PROCESSED_DATA_PATH, str(formatted_date), str(formatted_hour)
+    )
     for filename in os.listdir(processed_data_path):
-        if filename.endswith((".json", ".json.gz")) and filename.startswith("customers"):
+        if filename.endswith((".json", ".json.gz")) and filename.startswith(
+            "customers"
+        ):
             return os.path.join(processed_data_path, filename)
     return None
 
 
 # Anonymize and update the data in the processed data file
-def anonymize_and_update_data(file_path: str, customer_id: str, erasure_request: Dict[str, Any]) -> None:
+def anonymize_and_update_data(
+    file_path: str, customer_id: str, erasure_request: Dict[str, Any]
+) -> None:
     """
     Anonymize and update the data in the processed data file.
 
@@ -88,7 +107,7 @@ def anonymize_and_update_data(file_path: str, customer_id: str, erasure_request:
     try:
         is_gzipped = file_path.endswith(".gz")
 
-        with (gzip.open(file_path, "rt") if is_gzipped else open(file_path, "r")) as file:
+        with gzip.open(file_path, "rt") if is_gzipped else open(file_path, "r") as file:
             data = [json.loads(line) for line in file]
 
         for record in data:
@@ -96,7 +115,7 @@ def anonymize_and_update_data(file_path: str, customer_id: str, erasure_request:
                 # Anonymize the email in the record
                 record["email"] = anonymized_email
 
-        with (gzip.open(file_path, "wt") if is_gzipped else open(file_path, "w")) as file:
+        with gzip.open(file_path, "wt") if is_gzipped else open(file_path, "w") as file:
             for record in data:
                 json.dump(record, file)
                 file.write("\n")
@@ -123,7 +142,9 @@ def archive_updated_file(file_path: str, date: datetime, hour: int) -> None:
     logger.info(f"File archived: {archive_file_path}")
 
 
-def process_erasure_requests(connection: Any, erasure_requests: List[Dict[str, Any]]) -> None:
+def process_erasure_requests(
+    connection: Any, erasure_requests: List[Dict[str, Any]]
+) -> None:
     """
     Process erasure requests by anonymizing and updating customer data.
 
@@ -175,7 +196,13 @@ def format_hour_for_file_system(actual_hour: int) -> str:
     return f"hour={actual_hour:02}"
 
 
-def log_invalid_erasure_request(connection: Any, erasure_request: Dict[str, Any], error_message: str, date: str, hour: str) -> None:
+def log_invalid_erasure_request(
+    connection: Any,
+    erasure_request: Dict[str, Any],
+    error_message: str,
+    date: str,
+    hour: str,
+) -> None:
     """
     Log invalid erasure requests into the database.
 
@@ -191,28 +218,39 @@ def log_invalid_erasure_request(connection: Any, erasure_request: Dict[str, Any]
     with connection.cursor() as cursor:
         # Check if the customer with the same id already exists
         customer_id = erasure_request.get("customer-id")
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT customer_id FROM data.invalid_erasure_requests WHERE customer_id = %s;
-        """, (customer_id,))
+        """,
+            (customer_id,),
+        )
 
         existing_record = cursor.fetchone()
 
         if existing_record:
             # Update the existing record if needed
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE data.invalid_erasure_requests
                 SET error_message = %s
                 WHERE customer_id = %s;
-            """, (error_message, customer_id))
+            """,
+                (error_message, customer_id),
+            )
         else:
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO data.invalid_erasure_requests (record_date, record_hour, customer_id, error_message) 
                 VALUES (%s, %s, %s, %s);
-            """, (actual_date, actual_hour, customer_id, error_message))
+            """,
+                (actual_date, actual_hour, customer_id, error_message),
+            )
     connection.commit()
 
 
-def transform_and_validate_erasure_requests(connection: Any, erasure_requests_data: List[Dict[str, Any]], date: str, hour: str) -> List[Dict[str, Any]]:
+def transform_and_validate_erasure_requests(
+    connection: Any, erasure_requests_data: List[Dict[str, Any]], date: str, hour: str
+) -> List[Dict[str, Any]]:
     """
     Transform and validate erasure requests against the schema.
 
@@ -247,8 +285,12 @@ def transform_and_validate_erasure_requests(connection: Any, erasure_requests_da
                 valid_erasure_requests.append(erasure_request)
             else:
                 # Log or handle duplicate customer-id
-                logger.debug(f"Duplicate customer-id found for erasure request: {customer_id}")
-                log_invalid_erasure_request(connection, erasure_request, "Duplicate customer-id", date, hour)
+                logger.debug(
+                    f"Duplicate customer-id found for erasure request: {customer_id}"
+                )
+                log_invalid_erasure_request(
+                    connection, erasure_request, "Duplicate customer-id", date, hour
+                )
 
         except jsonschema.exceptions.ValidationError as e:
             # Log or handle validation errors
@@ -259,7 +301,9 @@ def transform_and_validate_erasure_requests(connection: Any, erasure_requests_da
     return valid_erasure_requests
 
 
-def log_processed_erasure_requests(connection: Any, date: str, hour: str, customer_ids: List[str], emails: List[str]) -> None:
+def log_processed_erasure_requests(
+    connection: Any, date: str, hour: str, customer_ids: List[str], emails: List[str]
+) -> None:
     """
     Log processed erasure requests into the database.
 
@@ -275,25 +319,35 @@ def log_processed_erasure_requests(connection: Any, date: str, hour: str, custom
     with connection.cursor() as cursor:
         for customer_id, email in zip(customer_ids, emails):
             # Check if the record already exists
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT COUNT(*) FROM data.erasure_requests 
                 WHERE record_date = %s AND record_hour = %s AND customer_id = %s;
-            """, (actual_date, actual_hour, customer_id))
+            """,
+                (actual_date, actual_hour, customer_id),
+            )
 
             count = cursor.fetchone()[0]
             if count == 0:
                 # Record doesn't exist, insert it
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO data.erasure_requests (record_date, record_hour, customer_id, email) 
                     VALUES (%s, %s, %s, %s);
-                """, (actual_date, actual_hour, customer_id, email))
+                """,
+                    (actual_date, actual_hour, customer_id, email),
+                )
             else:
                 # Record already exists, log or handle accordingly
-                logger.info(f"Record for customer_id {customer_id} at {actual_date} {actual_hour} already exists.")
+                logger.info(
+                    f"Record for customer_id {customer_id} at {actual_date} {actual_hour} already exists."
+                )
     connection.commit()
 
 
-def process_hourly_data(connection: Any, date: str, hour: str, available_datasets: List[str]) -> None:
+def process_hourly_data(
+    connection: Any, date: str, hour: str, available_datasets: List[str]
+) -> None:
     """
     Process erasure requests for a given hour.
 
@@ -303,8 +357,10 @@ def process_hourly_data(connection: Any, date: str, hour: str, available_dataset
         hour (str): The hour of the data.
         available_datasets (List[str]): List of available datasets for the given hour.
     """
-    dataset_paths = {dataset: os.path.join(RAW_DATA_PATH, f"{date}", f"{hour}", f"{dataset}")
-                     for dataset in available_datasets}
+    dataset_paths = {
+        dataset: os.path.join(RAW_DATA_PATH, f"{date}", f"{hour}", f"{dataset}")
+        for dataset in available_datasets
+    }
     logger.debug("Dataset Paths:", dataset_paths)
 
     # Record the start time
@@ -316,11 +372,19 @@ def process_hourly_data(connection: Any, date: str, hour: str, available_dataset
         if dataset_type in dataset_paths:
             erasure_requests_data.extend(extract_data(dataset_paths[dataset_type]))
 
-    transformed_and_validated_erasure_requests = transform_and_validate_erasure_requests(connection, erasure_requests_data, date, hour)
+    transformed_and_validated_erasure_requests = (
+        transform_and_validate_erasure_requests(
+            connection, erasure_requests_data, date, hour
+        )
+    )
 
     process_erasure_requests(connection, erasure_requests_data)
-    customer_ids = [request["customer-id"] for request in transformed_and_validated_erasure_requests]
-    emails = [request["email"] for request in transformed_and_validated_erasure_requests]
+    customer_ids = [
+        request["customer-id"] for request in transformed_and_validated_erasure_requests
+    ]
+    emails = [
+        request["email"] for request in transformed_and_validated_erasure_requests
+    ]
     log_processed_erasure_requests(connection, date, hour, customer_ids, emails)
 
     # Record the end time
@@ -328,7 +392,14 @@ def process_hourly_data(connection: Any, date: str, hour: str, available_dataset
 
     # Calculate processing time
     processing_time = end_time - start_time
-    log_processing_statistics(connection, date, hour, "erasure_requests.json.gz", len(erasure_requests_data), processing_time)
+    log_processing_statistics(
+        connection,
+        date,
+        hour,
+        "erasure_requests.json.gz",
+        len(erasure_requests_data),
+        processing_time,
+    )
 
     # Archive and delete the original files
     for dataset_type, dataset_path in dataset_paths.items():
@@ -358,11 +429,17 @@ def process_all_data(connection: Any) -> None:
             for hour_folder in hour_folders:
                 hour_path = os.path.join(date_path, hour_folder)
 
-                available_datasets = [filename for filename in os.listdir(hour_path) if filename.startswith("erasure")
-                                      and filename.endswith((".json", ".json.gz"))]
+                available_datasets = [
+                    filename
+                    for filename in os.listdir(hour_path)
+                    if filename.startswith("erasure")
+                    and filename.endswith((".json", ".json.gz"))
+                ]
 
                 if available_datasets:
-                    process_hourly_data(connection, date_folder, hour_folder, available_datasets)
+                    process_hourly_data(
+                        connection, date_folder, hour_folder, available_datasets
+                    )
                 else:
                     logger.warning(f"No datasets found for {date_folder}/{hour_folder}")
 

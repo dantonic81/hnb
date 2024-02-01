@@ -5,7 +5,16 @@ from datetime import datetime
 from dotenv import load_dotenv
 import jsonschema
 from jsonschema import validate
-from common import extract_data, connect_to_postgres, cleanup_empty_directories, archive_and_delete, log_processing_statistics, extract_actual_date, extract_actual_hour, load_data
+from common import (
+    extract_data,
+    connect_to_postgres,
+    cleanup_empty_directories,
+    archive_and_delete,
+    log_processing_statistics,
+    extract_actual_date,
+    extract_actual_hour,
+    load_data,
+)
 import psycopg2
 from typing import Any, Dict, List
 
@@ -17,10 +26,10 @@ logger = logging.getLogger(__name__)
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-RAW_DATA_PATH = '/opt/dagster/app/raw_data'
-PROCESSED_DATA_PATH = '/opt/dagster/app/processed_data'
-ARCHIVED_DATA_PATH = '/opt/dagster/app/archived_data'
-INVALID_RECORDS_TABLE = 'data.invalid_customers'
+RAW_DATA_PATH = "/opt/dagster/app/raw_data"
+PROCESSED_DATA_PATH = "/opt/dagster/app/processed_data"
+ARCHIVED_DATA_PATH = "/opt/dagster/app/archived_data"
+INVALID_RECORDS_TABLE = "data.invalid_customers"
 CUSTOMERS_SCHEMA_FILE = "customer_schema.json"
 
 
@@ -29,7 +38,9 @@ with open(CUSTOMERS_SCHEMA_FILE, "r") as schema_file:
     CUSTOMERS_SCHEMA = json.load(schema_file)
 
 
-def log_invalid_customer(connection: Any, customer: Dict[str, Any], error_message: str, date: str, hour: str) -> None:
+def log_invalid_customer(
+    connection: Any, customer: Dict[str, Any], error_message: str, date: str, hour: str
+) -> None:
     """
     Log invalid customer data into the database.
 
@@ -44,28 +55,47 @@ def log_invalid_customer(connection: Any, customer: Dict[str, Any], error_messag
     actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
         # Check if the customer with the same id already exists
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT id FROM data.invalid_customers WHERE id = %s;
-        """, (customer.get("id"),))
+        """,
+            (customer.get("id"),),
+        )
 
         existing_record = cursor.fetchone()
 
         if existing_record:
             # Update the existing record if needed
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE data.invalid_customers
                 SET error_message = %s
                 WHERE id = %s;
-            """, (error_message, customer.get("id")))
+            """,
+                (error_message, customer.get("id")),
+            )
         else:
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO data.invalid_customers (record_date, record_hour, id, first_name, last_name, email, error_message) 
                 VALUES (%s, %s, %s, %s, %s, %s, %s);
-            """, (actual_date, actual_hour, customer.get("id"), customer.get("first_name"), customer.get("last_name"), customer.get("email"), error_message))
+            """,
+                (
+                    actual_date,
+                    actual_hour,
+                    customer.get("id"),
+                    customer.get("first_name"),
+                    customer.get("last_name"),
+                    customer.get("email"),
+                    error_message,
+                ),
+            )
     connection.commit()
 
 
-def transform_and_validate_customers(connection: Any, customers_data: List[Dict[str, Any]], date: str, hour: str) -> List[Dict[str, Any]]:
+def transform_and_validate_customers(
+    connection: Any, customers_data: List[Dict[str, Any]], date: str, hour: str
+) -> List[Dict[str, Any]]:
     """
     Transform and validate customer data.
 
@@ -92,7 +122,7 @@ def transform_and_validate_customers(connection: Any, customers_data: List[Dict[
             validate(instance=customer, schema=schema)
 
             # Convert 'id' to integer
-            customer_id = int(customer['id'])
+            customer_id = int(customer["id"])
 
             # Check uniqueness of id
             if customer_id not in unique_ids:
@@ -111,12 +141,20 @@ def transform_and_validate_customers(connection: Any, customers_data: List[Dict[
 
     # Update last_change timestamp
     for customer in valid_customers:
-        customer['last_change'] = datetime.utcnow().isoformat()
+        customer["last_change"] = datetime.utcnow().isoformat()
 
     return valid_customers
 
 
-def log_processed_customers(connection: Any, date: str, hour: str, customer_ids: List[str], first_names: List[str], last_names: List[str], emails: List[str]) -> None:
+def log_processed_customers(
+    connection: Any,
+    date: str,
+    hour: str,
+    customer_ids: List[str],
+    first_names: List[str],
+    last_names: List[str],
+    emails: List[str],
+) -> None:
     """
     Log processed customer data into the database.
 
@@ -132,27 +170,46 @@ def log_processed_customers(connection: Any, date: str, hour: str, customer_ids:
     actual_date = extract_actual_date(date)
     actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
-        for customer_id, first_name, last_name, email in zip(customer_ids, first_names, last_names, emails):
+        for customer_id, first_name, last_name, email in zip(
+            customer_ids, first_names, last_names, emails
+        ):
             # Check if the record already exists
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT COUNT(*) FROM data.customers 
                 WHERE record_date = %s AND record_hour = %s AND id = %s;
-            """, (actual_date, actual_hour, customer_id))
+            """,
+                (actual_date, actual_hour, customer_id),
+            )
 
             count = cursor.fetchone()[0]
             if count == 0:
                 # Record doesn't exist, insert it
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO data.customers (record_date, record_hour, id, first_name, last_name, email) 
                     VALUES (%s, %s, %s, %s, %s, %s);
-                """, (actual_date, actual_hour, customer_id, first_name, last_name, email))
+                """,
+                    (
+                        actual_date,
+                        actual_hour,
+                        customer_id,
+                        first_name,
+                        last_name,
+                        email,
+                    ),
+                )
             else:
                 # Record already exists, log or handle accordingly
-                logger.info(f"Record for customer_id {customer_id} at {actual_date} {actual_hour} already exists.")
+                logger.info(
+                    f"Record for customer_id {customer_id} at {actual_date} {actual_hour} already exists."
+                )
     connection.commit()
 
 
-def process_hourly_data(connection: Any, date: str, hour: str, available_datasets: List[str]) -> None:
+def process_hourly_data(
+    connection: Any, date: str, hour: str, available_datasets: List[str]
+) -> None:
     """
     Process hourly customer data for the specified date and hour.
 
@@ -162,8 +219,10 @@ def process_hourly_data(connection: Any, date: str, hour: str, available_dataset
         hour (str): The hour of the hourly data.
         available_datasets (List[str]): List of available datasets for the given hour.
     """
-    dataset_paths = {dataset: os.path.join(RAW_DATA_PATH, f"{date}", f"{hour}", f"{dataset}")
-                     for dataset in available_datasets}
+    dataset_paths = {
+        dataset: os.path.join(RAW_DATA_PATH, f"{date}", f"{hour}", f"{dataset}")
+        for dataset in available_datasets
+    }
     logger.debug("Dataset Paths:", dataset_paths)
 
     # Record the start time
@@ -173,24 +232,37 @@ def process_hourly_data(connection: Any, date: str, hour: str, available_dataset
     customers_data = extract_data(dataset_paths.get("customers.json.gz", ""))
 
     # Transform and validate raw_data
-    transformed_customers = transform_and_validate_customers(connection, customers_data, date, hour)
+    transformed_customers = transform_and_validate_customers(
+        connection, customers_data, date, hour
+    )
 
     # Load processed raw_data
-    load_data(transformed_customers, "customers.json.gz", date, hour, PROCESSED_DATA_PATH)
+    load_data(
+        transformed_customers, "customers.json.gz", date, hour, PROCESSED_DATA_PATH
+    )
 
     # Log processed customers
     customer_ids = [customer["id"] for customer in transformed_customers]
     first_names = [customer["first_name"] for customer in transformed_customers]
     last_names = [customer["last_name"] for customer in transformed_customers]
     emails = [customer["email"] for customer in transformed_customers]
-    log_processed_customers(connection, date, hour, customer_ids, first_names, last_names, emails)
+    log_processed_customers(
+        connection, date, hour, customer_ids, first_names, last_names, emails
+    )
 
     # Record the end time
     end_time = datetime.now()
 
     # Calculate processing time
     processing_time = end_time - start_time
-    log_processing_statistics(connection, date, hour, "customers.json.gz", len(transformed_customers), processing_time)
+    log_processing_statistics(
+        connection,
+        date,
+        hour,
+        "customers.json.gz",
+        len(transformed_customers),
+        processing_time,
+    )
 
     # Archive and delete the original files
     for dataset_type, dataset_path in dataset_paths.items():
@@ -221,11 +293,17 @@ def process_all_data(connection: Any) -> None:
             for hour_folder in hour_folders:
                 hour_path = os.path.join(date_path, hour_folder)
 
-                available_datasets = [filename for filename in os.listdir(hour_path) if filename.startswith("customers")
-                                      and filename.endswith((".json", ".json.gz"))]
+                available_datasets = [
+                    filename
+                    for filename in os.listdir(hour_path)
+                    if filename.startswith("customers")
+                    and filename.endswith((".json", ".json.gz"))
+                ]
 
                 if available_datasets:
-                    process_hourly_data(connection, date_folder, hour_folder, available_datasets)
+                    process_hourly_data(
+                        connection, date_folder, hour_folder, available_datasets
+                    )
                 else:
                     logger.warning(f"No datasets found for {date_folder}/{hour_folder}")
 

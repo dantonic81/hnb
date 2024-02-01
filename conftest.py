@@ -25,7 +25,7 @@ def mock_open(mocker):
 
 @pytest.fixture
 def mock_connection_pool(mocker):
-    mocker.patch.object(pool, 'SimpleConnectionPool', autospec=True)
+    mocker.patch.object(pool, "SimpleConnectionPool", autospec=True)
     mocker.patch("psycopg2.connect")  #
 
     yield
@@ -41,14 +41,28 @@ def mocker_open(mocker):
 
 @pytest.fixture
 def mock_connection(mocker):
-    return mocker.patch("products_etl.connect_to_postgres").return_value.__enter__.return_value
+    return mocker.patch(
+        "products_etl.connect_to_postgres"
+    ).return_value.__enter__.return_value
 
 
 @pytest.fixture
 def mock_products_data():
     return [
-        {"sku": 123, "name": "Product A", "price": 10.0, "category": "Electronics", "popularity": 5},
-        {"sku": 456, "name": "Product B", "price": 20.0, "category": "Clothing", "popularity": 8},
+        {
+            "sku": 123,
+            "name": "Product A",
+            "price": 10.0,
+            "category": "Electronics",
+            "popularity": 5,
+        },
+        {
+            "sku": 456,
+            "name": "Product B",
+            "price": 20.0,
+            "category": "Clothing",
+            "popularity": 8,
+        },
     ]
 
 

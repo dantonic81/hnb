@@ -10,4 +10,3 @@ def process_products_op():
 @graph
 def products_graph():
     process_products_op()
-

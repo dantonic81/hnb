@@ -3,7 +3,7 @@ from transactions_etl import (
     is_existing_product,
     are_valid_product_skus,
     is_valid_total_cost,
-    process_hourly_data
+    process_hourly_data,
 )
 
 
@@ -47,9 +47,16 @@ def test_is_valid_total_cost():
 
 
 def test_process_hourly_data(mock_connection):
-    with patch("transactions_etl.extract_data", return_value=[{"transaction_id": "123"}]):
-        with patch("transactions_etl.transform_and_validate_transactions", return_value=[{"transaction_id": "123"}]):
+    with patch(
+        "transactions_etl.extract_data", return_value=[{"transaction_id": "123"}]
+    ):
+        with patch(
+            "transactions_etl.transform_and_validate_transactions",
+            return_value=[{"transaction_id": "123"}],
+        ):
             with patch("transactions_etl.load_data"):
                 with patch("transactions_etl.log_processed_transactions"):
                     with patch("transactions_etl.archive_and_delete"):
-                        process_hourly_data(mock_connection, "2022-01-01", "01", ["transactions.json"])
+                        process_hourly_data(
+                            mock_connection, "2022-01-01", "01", ["transactions.json"]
+                        )

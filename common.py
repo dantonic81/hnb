@@ -73,7 +73,9 @@ def cleanup_empty_directories(directory: str) -> None:
                 logger.debug(f"Empty directory deleted: {dir_path}")
 
 
-def archive_and_delete(file_path: str, dataset_type: str, date: str, hour: str, archive_path: str) -> None:
+def archive_and_delete(
+    file_path: str, dataset_type: str, date: str, hour: str, archive_path: str
+) -> None:
     """
     Archive and delete the specified file.
 
@@ -122,7 +124,14 @@ def extract_actual_hour(hour_str) -> int:
     return int(hour_str.replace("hour=", ""))
 
 
-def log_processing_statistics(connection: Any, date: str, hour: str, dataset_type: str, record_count: int, processing_time: datetime) -> None:
+def log_processing_statistics(
+    connection: Any,
+    date: str,
+    hour: str,
+    dataset_type: str,
+    record_count: int,
+    processing_time: datetime,
+) -> None:
     """
     Log processing statistics.
 
@@ -137,10 +146,13 @@ def log_processing_statistics(connection: Any, date: str, hour: str, dataset_typ
     actual_date = extract_actual_date(date)
     actual_hour = extract_actual_hour(hour)
     with connection.cursor() as cursor:
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO data.processing_statistics (record_date, record_hour, dataset_type, record_count, processing_time) 
             VALUES (%s, %s, %s, %s, %s);
-        """, (actual_date, actual_hour, dataset_type, record_count, processing_time))
+        """,
+            (actual_date, actual_hour, dataset_type, record_count, processing_time),
+        )
     connection.commit()
 
 
@@ -159,11 +171,11 @@ def extract_data(file_path: str) -> list:
 
     _, file_extension = os.path.splitext(file_path)
 
-    if file_extension == '.gz':
+    if file_extension == ".gz":
         # Extract raw_data from a gzipped JSON file
         with gzip.open(file_path, "rt") as file:
             data = [json.loads(line) for line in file]
-    elif file_extension == '.json':
+    elif file_extension == ".json":
         # Extract raw_data from a plain JSON file
         with open(file_path, "r", encoding="utf-8") as file:
             data = [json.load(file)]
@@ -174,7 +186,9 @@ def extract_data(file_path: str) -> list:
     return data
 
 
-def load_data(data: list, dataset_type: str, date: str, hour: str, processed_data_path: str) -> None:
+def load_data(
+    data: list, dataset_type: str, date: str, hour: str, processed_data_path: str
+) -> None:
     """
     Load data to the specified location.
 
@@ -206,7 +220,9 @@ def load_data(data: list, dataset_type: str, date: str, hour: str, processed_dat
         # Use gzip compression if the file extension is .json.gz
         open_func = gzip.open if file_extension == ".json.gz" else open
         # Construct the output path
-        output_path = os.path.join(str(output_dir), f"{dataset_type_without_extension}{file_extension}")
+        output_path = os.path.join(
+            str(output_dir), f"{dataset_type_without_extension}{file_extension}"
+        )
 
         with open_func(output_path, "wt") as file:
             for record in data:

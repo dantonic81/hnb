@@ -1,4 +1,3 @@
-
 from common import (
     create_connection_pool,
     get_postgres_connection,
@@ -58,5 +57,3 @@ def test_load_data_empty_dataset(mocker, mock_os_makedirs, mocker_open):
 
     load_data([], "type.json", "2022-01-01", "00", "/processed_data")
     mocker_open.assert_not_called()
-
-

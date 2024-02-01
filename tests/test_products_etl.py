@@ -1,5 +1,5 @@
 from unittest.mock import patch
-from products_etl import (process_hourly_data, process_all_data)
+from products_etl import process_hourly_data, process_all_data
 
 
 def test_process_hourly_data(mock_connection, mock_products_data, mocker):
@@ -22,9 +22,13 @@ def test_process_hourly_data(mock_connection, mock_products_data, mocker):
 
 def test_process_all_data(mock_connection):
     with patch("products_etl.os.listdir", return_value=["2022-01-01"]):
-        with patch("products_etl.os.path.join", side_effect=lambda *args: "/".join(args)):
+        with patch(
+            "products_etl.os.path.join", side_effect=lambda *args: "/".join(args)
+        ):
             with patch("products_etl.os.listdir", return_value=["12"]):
-                with patch("products_etl.os.listdir", return_value=["products.json.gz"]):
+                with patch(
+                    "products_etl.os.listdir", return_value=["products.json.gz"]
+                ):
                     process_all_data(mock_connection)
 
     # Add assertions for the expected behavior during all data processing
