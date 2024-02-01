@@ -9,7 +9,6 @@ from common import (
     load_data,
 )
 import datetime
-from datetime import datetime
 
 
 def test_create_connection_pool(mock_connection_pool):
@@ -33,7 +32,7 @@ def test_archive_and_delete(mock_os_rename, mocker):
 def test_extract_actual_date():
     result = extract_actual_date("date=2022-01-01")
     # Create a datetime.date object for the expected value
-    expected_date = datetime(2022, 1, 1).date()
+    expected_date = datetime.datetime(2022, 1, 1).date()
 
     assert result == expected_date
 

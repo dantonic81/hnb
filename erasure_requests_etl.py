@@ -240,7 +240,7 @@ def log_invalid_erasure_request(
         else:
             cursor.execute(
                 """
-                INSERT INTO data.invalid_erasure_requests (record_date, record_hour, customer_id, error_message) 
+                INSERT INTO data.invalid_erasure_requests (record_date, record_hour, customer_id, error_message)
                 VALUES (%s, %s, %s, %s);
             """,
                 (actual_date, actual_hour, customer_id, error_message),
@@ -321,7 +321,7 @@ def log_processed_erasure_requests(
             # Check if the record already exists
             cursor.execute(
                 """
-                SELECT COUNT(*) FROM data.erasure_requests 
+                SELECT COUNT(*) FROM data.erasure_requests
                 WHERE record_date = %s AND record_hour = %s AND customer_id = %s;
             """,
                 (actual_date, actual_hour, customer_id),
@@ -332,7 +332,7 @@ def log_processed_erasure_requests(
                 # Record doesn't exist, insert it
                 cursor.execute(
                     """
-                    INSERT INTO data.erasure_requests (record_date, record_hour, customer_id, email) 
+                    INSERT INTO data.erasure_requests (record_date, record_hour, customer_id, email)
                     VALUES (%s, %s, %s, %s);
                 """,
                     (actual_date, actual_hour, customer_id, email),
@@ -447,7 +447,7 @@ def process_all_data(connection: Any) -> None:
         cleanup_empty_directories(RAW_DATA_PATH)
 
     except (psycopg2.Error, Exception):
-        logger.exception(f"An error occurred while processing data")
+        logger.exception("An error occurred while processing data")
 
 
 def main() -> None:
@@ -458,9 +458,9 @@ def main() -> None:
         with connect_to_postgres() as connection:
             process_all_data(connection)
     except psycopg2.Error:
-        logger.exception(f"An error occurred while processing data")
+        logger.exception("An error occurred while processing data")
     except Exception:
-        logger.exception(f"An error occurred")
+        logger.exception("An error occurred")
 
 
 if __name__ == "__main__":

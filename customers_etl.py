@@ -77,7 +77,7 @@ def log_invalid_customer(
         else:
             cursor.execute(
                 """
-                INSERT INTO data.invalid_customers (record_date, record_hour, id, first_name, last_name, email, error_message) 
+                INSERT INTO data.invalid_customers (record_date, record_hour, id, first_name, last_name, email, error_message)
                 VALUES (%s, %s, %s, %s, %s, %s, %s);
             """,
                 (
@@ -176,7 +176,7 @@ def log_processed_customers(
             # Check if the record already exists
             cursor.execute(
                 """
-                SELECT COUNT(*) FROM data.customers 
+                SELECT COUNT(*) FROM data.customers
                 WHERE record_date = %s AND record_hour = %s AND id = %s;
             """,
                 (actual_date, actual_hour, customer_id),
@@ -187,7 +187,7 @@ def log_processed_customers(
                 # Record doesn't exist, insert it
                 cursor.execute(
                     """
-                    INSERT INTO data.customers (record_date, record_hour, id, first_name, last_name, email) 
+                    INSERT INTO data.customers (record_date, record_hour, id, first_name, last_name, email)
                     VALUES (%s, %s, %s, %s, %s, %s);
                 """,
                     (
@@ -311,7 +311,7 @@ def process_all_data(connection: Any) -> None:
         cleanup_empty_directories(RAW_DATA_PATH)
 
     except (psycopg2.Error, Exception):
-        logger.exception(f"An error occurred while processing data")
+        logger.exception("An error occurred while processing data")
 
 
 def main() -> None:
@@ -322,9 +322,9 @@ def main() -> None:
         with connect_to_postgres() as connection:
             process_all_data(connection)
     except psycopg2.Error:
-        logger.exception(f"An error occurred while processing data")
+        logger.exception("An error occurred while processing data")
     except Exception:
-        logger.exception(f"An error occurred")
+        logger.exception("An error occurred")
 
 
 if __name__ == "__main__":

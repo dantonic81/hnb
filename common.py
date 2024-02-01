@@ -148,7 +148,7 @@ def log_processing_statistics(
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            INSERT INTO data.processing_statistics (record_date, record_hour, dataset_type, record_count, processing_time) 
+            INSERT INTO data.processing_statistics (record_date, record_hour, dataset_type, record_count, processing_time)
             VALUES (%s, %s, %s, %s, %s);
         """,
             (actual_date, actual_hour, dataset_type, record_count, processing_time),

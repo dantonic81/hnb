@@ -138,7 +138,7 @@ def bulk_insert_invalid_transactions(
     with connection.cursor() as cursor:
         cursor.executemany(
             """
-            INSERT INTO data.invalid_transactions (record_date, record_hour, transaction_id, customer_id, error_message) 
+            INSERT INTO data.invalid_transactions (record_date, record_hour, transaction_id, customer_id, error_message)
             VALUES (%s, %s, %s, %s, %s);
         """,
             [
@@ -279,7 +279,7 @@ def log_processed_transactions(
             # Insert transaction data
             cursor.execute(
                 """
-                INSERT INTO data.transactions (transaction_id, transaction_time, customer_id, record_date, record_hour) 
+                INSERT INTO data.transactions (transaction_id, transaction_time, customer_id, record_date, record_hour)
                 VALUES (%s, %s, %s, %s, %s);
             """,
                 (
@@ -430,7 +430,7 @@ def process_all_data(connection: Any) -> None:
         cleanup_empty_directories(RAW_DATA_PATH)
 
     except (psycopg2.Error, Exception):
-        logger.exception(f"An error occurred while processing data")
+        logger.exception("An error occurred while processing data")
 
 
 def main() -> None:
@@ -441,9 +441,9 @@ def main() -> None:
         with connect_to_postgres() as connection:
             process_all_data(connection)
     except psycopg2.Error:
-        logger.exception(f"An error occurred while processing data")
+        logger.exception("An error occurred while processing data")
     except Exception:
-        logger.exception(f"An error occurred")
+        logger.exception("An error occurred")
 
 
 if __name__ == "__main__":
