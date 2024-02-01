@@ -1,5 +1,6 @@
 import pytest
 from psycopg2 import pool
+from unittest.mock import Mock
 
 
 @pytest.fixture
@@ -24,9 +25,8 @@ def mock_open(mocker):
 
 @pytest.fixture
 def mock_connection_pool(mocker):
-    # Mock psycopg2 pool.SimpleConnectionPool
     mocker.patch.object(pool, 'SimpleConnectionPool', autospec=True)
-    mocker.patch("psycopg2.connect")  # Mock connect method
+    mocker.patch("psycopg2.connect")  #
 
     yield
 
@@ -51,3 +51,25 @@ def mock_products_data():
         {"sku": 456, "name": "Product B", "price": 20.0, "category": "Clothing", "popularity": 8},
     ]
 
+
+@pytest.fixture
+def mock_postgres_connection():
+    return Mock()
+
+
+@pytest.fixture
+def mock_erasure_request_data():
+    return [
+        {"customer-id": "123", "email": "test@example.com"},
+        {"customer-id": "456", "email": "another@example.com"},
+    ]
+
+
+@pytest.fixture
+def mock_date():
+    return "2024-01-01"
+
+
+@pytest.fixture
+def mock_hour():
+    return "12"
