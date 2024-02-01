@@ -96,6 +96,11 @@ from where you can run any of the four jobs in their separate launchpads.
     docker compose exec dwh psql -U dwh -d hnb
     ```
 
+## PROCESSED_DATA and ARCHIVED_DATA folders
+
+Job runs take data from `raw_data` folder and process it into `processed_data` folder.
+After processing is done, files are archived to `archived_data` folder and the original files are deleted from `raw_data` folder.
+
 
 ## Configuration
 

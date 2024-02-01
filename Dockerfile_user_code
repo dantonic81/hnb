@@ -4,6 +4,8 @@ WORKDIR /opt/dagster/app
 
 COPY . .
 
+RUN mkdir -p /opt/dagster/app/processed_data /opt/dagster/app/archived_data
+
 RUN pip install --no-cache-dir dagster dagster-postgres dagster-docker -r requirements.txt
 
 FROM python:3.8.10-slim
