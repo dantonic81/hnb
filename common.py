@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 import os
 from psycopg2.pool import SimpleConnectionPool
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import gzip
 import json
@@ -130,7 +130,7 @@ def log_processing_statistics(
     hour: str,
     dataset_type: str,
     record_count: int,
-    processing_time: datetime,
+    processing_time: timedelta,
 ) -> None:
     """
     Log processing statistics.
